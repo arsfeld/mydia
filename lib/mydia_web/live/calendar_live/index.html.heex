@@ -1,0 +1,224 @@
+<Layouts.app flash={@flash}>
+  <div class="flex flex-col h-full">
+    <%!-- Header with title and controls --%>
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">{@page_title}</h1>
+        <p class="text-base-content/70 mt-1">
+          Track upcoming and past media releases
+        </p>
+      </div>
+
+      <%!-- Filter controls --%>
+      <div class="flex items-center gap-2">
+        <select
+          name="type"
+          phx-change="filter"
+          class="select select-bordered select-sm"
+        >
+          <option value="all" selected={is_nil(@filter_type)}>All Media</option>
+          <option value="tv_show" selected={@filter_type == "tv_show"}>TV Shows</option>
+          <option value="movie" selected={@filter_type == "movie"}>Movies</option>
+        </select>
+      </div>
+    </div>
+
+    <%!-- Month navigation --%>
+    <div class="flex items-center justify-between mb-6 bg-base-200 rounded-lg p-4">
+      <button
+        type="button"
+        phx-click="prev_month"
+        class="btn btn-ghost btn-sm"
+      >
+        <.icon name="hero-chevron-left" class="w-5 h-5" />
+        <span class="hidden sm:inline ml-1">Previous</span>
+      </button>
+
+      <div class="flex items-center gap-2">
+        <h2 class="text-xl font-semibold">
+          {format_month_year(@selected_month, @selected_year)}
+        </h2>
+        <button
+          type="button"
+          phx-click="today"
+          class="btn btn-primary btn-xs ml-2"
+        >
+          Today
+        </button>
+      </div>
+
+      <button
+        type="button"
+        phx-click="next_month"
+        class="btn btn-ghost btn-sm"
+      >
+        <span class="hidden sm:inline mr-1">Next</span>
+        <.icon name="hero-chevron-right" class="w-5 h-5" />
+      </button>
+    </div>
+
+    <%!-- Empty state --%>
+    <%= if @calendar_empty? do %>
+      <div class="flex flex-col items-center justify-center py-16">
+        <.icon name="hero-calendar" class="w-16 h-16 text-base-content/30 mb-4" />
+        <h3 class="text-xl font-semibold text-base-content/70 mb-2">No releases this month</h3>
+        <p class="text-base-content/50">
+          No monitored media has releases scheduled for {format_month_year(
+            @selected_month,
+            @selected_year
+          )}
+        </p>
+      </div>
+    <% end %>
+
+    <%!-- Desktop: Calendar grid view --%>
+    <div class="hidden md:block">
+      <%!-- Weekday headers --%>
+      <div class="grid grid-cols-7 gap-2 mb-2">
+        <div
+          :for={day <- ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
+          class="text-center text-sm font-semibold text-base-content/70 py-2"
+        >
+          {day}
+        </div>
+      </div>
+
+      <%!-- Calendar grid --%>
+      <div class="grid grid-cols-7 gap-2">
+        <%= for day_data <- @calendar_days do %>
+          <%= if is_nil(day_data) do %>
+            <%!-- Empty cell for padding --%>
+            <div class="bg-base-200 rounded-lg min-h-[120px]"></div>
+          <% else %>
+            <div class={[
+              "bg-base-100 rounded-lg p-2 min-h-[120px] border-2 transition-colors",
+              day_data.is_today && "border-primary",
+              !day_data.is_today && "border-base-300"
+            ]}>
+              <%!-- Day number --%>
+              <div class={[
+                "text-sm font-semibold mb-2",
+                day_data.is_today && "text-primary"
+              ]}>
+                {day_data.day}
+              </div>
+
+              <%!-- Items for this day --%>
+              <div class="space-y-1">
+                <%= for item <- Enum.take(day_data.items, 3) do %>
+                  <button
+                    type="button"
+                    phx-click="view_item"
+                    phx-value-id={item.id}
+                    phx-value-type={item.type}
+                    class={[
+                      "w-full text-left text-xs p-1 rounded cursor-pointer hover:opacity-80 transition-opacity truncate",
+                      status_color(get_item_status(item))
+                    ]}
+                    title={item.media_item_title}
+                  >
+                    <%= if item.type == "episode" do %>
+                      <span class="font-semibold">{format_episode(item)}</span>
+                      <span class="truncate block">{item.media_item_title}</span>
+                    <% else %>
+                      <span class="truncate block">{item.title}</span>
+                    <% end %>
+                  </button>
+                <% end %>
+
+                <%!-- Show +N more indicator if there are more items --%>
+                <%= if length(day_data.items) > 3 do %>
+                  <div class="text-xs text-base-content/50 pl-1">
+                    +{length(day_data.items) - 3} more
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+
+    <%!-- Mobile: List view --%>
+    <div class="md:hidden space-y-4">
+      <%= for {date, items} <- Enum.sort(@grouped_items, fn {d1, _}, {d2, _} -> Date.compare(d1, d2) != :gt end) do %>
+        <div class="card bg-base-100 shadow-lg">
+          <div class="card-body p-4">
+            <%!-- Date header --%>
+            <h3 class={[
+              "text-lg font-semibold mb-3",
+              date == @current_date && "text-primary"
+            ]}>
+              {Calendar.strftime(date, "%A, %B %-d")}
+              <%= if date == @current_date do %>
+                <span class="badge badge-primary badge-sm ml-2">Today</span>
+              <% end %>
+            </h3>
+
+            <%!-- Items for this date --%>
+            <div class="space-y-2">
+              <%= for item <- items do %>
+                <button
+                  type="button"
+                  phx-click="view_item"
+                  phx-value-id={item.id}
+                  phx-value-type={item.type}
+                  class={[
+                    "w-full text-left p-3 rounded-lg cursor-pointer hover:opacity-80 transition-opacity",
+                    status_color(get_item_status(item))
+                  ]}
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                      <%= if item.type == "episode" do %>
+                        <div class="font-semibold text-sm">
+                          {item.media_item_title}
+                        </div>
+                        <div class="text-xs opacity-90">
+                          {format_episode(item)} - {item.title || "TBA"}
+                        </div>
+                      <% else %>
+                        <div class="font-semibold text-sm">
+                          {item.title}
+                        </div>
+                        <div class="text-xs opacity-90">
+                          Movie
+                        </div>
+                      <% end %>
+                    </div>
+                    <div class="flex-shrink-0">
+                      <.icon name="hero-chevron-right" class="w-5 h-5" />
+                    </div>
+                  </div>
+                </button>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <%!-- Legend --%>
+    <div class="mt-8 p-4 bg-base-200 rounded-lg">
+      <h4 class="text-sm font-semibold mb-3">Status Legend</h4>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <div class="flex items-center gap-2">
+          <div class="w-4 h-4 rounded bg-base-300"></div>
+          <span>Upcoming</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-4 h-4 rounded bg-info"></div>
+          <span>Downloading</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-4 h-4 rounded bg-success"></div>
+          <span>Downloaded</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-4 h-4 rounded bg-error"></div>
+          <span>Missing</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layouts.app>
