@@ -113,16 +113,59 @@ defmodule Mydia.Downloads do
   Cancels a download.
   """
   def cancel_download(%Download{} = download) do
-    download
-    |> Download.changeset(%{status: "cancelled"})
-    |> Repo.update()
+    result =
+      download
+      |> Download.changeset(%{status: "cancelled"})
+      |> Repo.update()
+
+    case result do
+      {:ok, updated_download} ->
+        broadcast_download_update(updated_download.id)
+        {:ok, updated_download}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Retries a failed download by resetting it to pending status.
+  """
+  def retry_download(%Download{} = download) do
+    result =
+      download
+      |> Download.changeset(%{
+        status: "pending",
+        error_message: nil,
+        progress: 0,
+        completed_at: nil
+      })
+      |> Repo.update()
+
+    case result do
+      {:ok, updated_download} ->
+        broadcast_download_update(updated_download.id)
+        {:ok, updated_download}
+
+      error ->
+        error
+    end
   end
 
   @doc """
   Deletes a download.
   """
   def delete_download(%Download{} = download) do
-    Repo.delete(download)
+    result = Repo.delete(download)
+
+    case result do
+      {:ok, deleted_download} ->
+        broadcast_download_update(deleted_download.id)
+        {:ok, deleted_download}
+
+      error ->
+        error
+    end
   end
 
   @doc """
