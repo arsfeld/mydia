@@ -38,28 +38,45 @@ A modern, self-hosted media management platform for tracking, organizing, and mo
 
 <table>
   <tr>
-    <td><img src="screenshots/homepage.png" alt="Homepage" /></td>
-    <td><img src="screenshots/dashboard.png" alt="Dashboard" /></td>
+    <td><img src="screenshots/homepage.png" alt="Dashboard" /></td>
+    <td><img src="screenshots/movies.png" alt="Movies" /></td>
   </tr>
   <tr>
-    <td align="center"><b>Homepage</b></td>
     <td align="center"><b>Dashboard</b></td>
+    <td align="center"><b>Movies</b></td>
   </tr>
   <tr>
+    <td><img src="screenshots/tv-shows.png" alt="TV Shows" /></td>
     <td><img src="screenshots/calendar.png" alt="Calendar View" /></td>
-    <td><img src="screenshots/search.png" alt="Search" /></td>
   </tr>
   <tr>
+    <td align="center"><b>TV Shows</b></td>
     <td align="center"><b>Calendar View</b></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/search.png" alt="Search" /></td>
+    <td></td>
+  </tr>
+  <tr>
     <td align="center"><b>Search</b></td>
+    <td></td>
   </tr>
 </table>
 
-## 🚀 Quick Start
+## 🏗️ Supported Architectures
 
-Pre-built Docker images are available for multiple platforms (amd64, arm64).
+Multi-platform images are available for the following architectures:
 
-1. **Generate secrets:**
+| Architecture | Available | Tag |
+| :----: | :----: | ---- |
+| x86-64 | ✅ | amd64-latest |
+| arm64 | ✅ | arm64-latest |
+
+The multi-arch image `ghcr.io/arsfeld/mydia:latest` will automatically pull the correct image for your architecture.
+
+## 🚀 Application Setup
+
+1. **Generate required secrets:**
 
 ```bash
 # Generate SECRET_KEY_BASE
@@ -69,115 +86,134 @@ openssl rand -base64 48
 openssl rand -base64 48
 ```
 
-2. **Choose your deployment method below** (Docker Compose or Docker Run)
+2. Set up your container using Docker Compose (recommended) or Docker CLI
+3. Access the web interface at `http://your-server:4000`
+4. Default credentials: `admin` / `admin` (change immediately!)
+5. Configure download clients and indexers in the Admin section
 
-### Option 1: Docker Compose (Recommended)
+## 📦 Usage
 
-Create a `docker-compose.yml` file:
+Here are some example snippets to help you get started creating a container.
+
+### Docker Compose (Recommended)
 
 ```yaml
+---
 services:
   mydia:
     image: ghcr.io/arsfeld/mydia:latest
     container_name: mydia
-    restart: unless-stopped
-
-    ports:
-      - "4000:4000"
-
     environment:
-      # Required: Security secrets (generate with: openssl rand -base64 48)
-      SECRET_KEY_BASE: "your-secret-key-base-here"
-      GUARDIAN_SECRET_KEY: "your-guardian-secret-key-here"
-
-      # Required: Database configuration
-      DATABASE_PATH: "/data/mydia.db"
-
-      # Server configuration
-      PHX_HOST: "localhost"  # Change to your domain
-      PORT: "4000"
-
-      # Media library paths (must match volume mounts below)
-      MOVIES_PATH: "/media/movies"
-      TV_PATH: "/media/tv"
-
-      # Optional: OIDC authentication (leave blank for local auth)
-      OIDC_DISCOVERY_DOCUMENT_URI: ""
-      OIDC_CLIENT_ID: ""
-      OIDC_CLIENT_SECRET: ""
-
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - SECRET_KEY_BASE=your-secret-key-base-here  # Required: generate with openssl rand -base64 48
+      - GUARDIAN_SECRET_KEY=your-guardian-secret-key-here  # Required: generate with openssl rand -base64 48
+      - PHX_HOST=localhost  # Change to your domain
+      - PORT=4000
+      - MOVIES_PATH=/media/movies
+      - TV_PATH=/media/tv
     volumes:
-      # Database and application data
-      - mydia_data:/data
-
-      # Media directories - customize these paths to your media locations
+      - /path/to/mydia/config:/config
       - /path/to/your/movies:/media/movies
       - /path/to/your/tv:/media/tv
       - /path/to/your/downloads:/media/downloads
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 3s
-      start_period: 40s
-      retries: 3
-
-volumes:
-  mydia_data:
-    driver: local
+    ports:
+      - 4000:4000
+    restart: unless-stopped
 ```
 
-Then run:
-
-```bash
-docker compose up -d
-```
-
-### Option 2: Docker Run
+### Docker CLI
 
 ```bash
 docker run -d \
-  --name mydia \
-  --restart unless-stopped \
+  --name=mydia \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=America/New_York \
+  -e SECRET_KEY_BASE=your-secret-key-base-here \
+  -e GUARDIAN_SECRET_KEY=your-guardian-secret-key-here \
+  -e PHX_HOST=localhost \
+  -e PORT=4000 \
+  -e MOVIES_PATH=/media/movies \
+  -e TV_PATH=/media/tv \
   -p 4000:4000 \
-  -e SECRET_KEY_BASE="your-secret-key-base-here" \
-  -e GUARDIAN_SECRET_KEY="your-guardian-secret-key-here" \
-  -e DATABASE_PATH="/data/mydia.db" \
-  -e PHX_HOST="localhost" \
-  -e PORT="4000" \
-  -e MOVIES_PATH="/media/movies" \
-  -e TV_PATH="/media/tv" \
-  -v mydia_data:/data \
+  -v /path/to/mydia/config:/config \
   -v /path/to/your/movies:/media/movies \
   -v /path/to/your/tv:/media/tv \
   -v /path/to/your/downloads:/media/downloads \
+  --restart unless-stopped \
   ghcr.io/arsfeld/mydia:latest
 ```
 
-### Configuration
+## 📋 Parameters
 
-See the **[Environment Variables Reference](#-environment-variables-reference)** section below for all supported configuration options including:
-- Download client integration (qBittorrent, Transmission)
-- Indexer configuration (Prowlarr, Jackett)
-- OIDC authentication
-- Advanced settings
+Container images are configured using parameters passed at runtime. These parameters are separated by a colon and indicate `external:internal` respectively.
 
-### Upgrading
+### Ports (`-p`)
 
-To upgrade to a new version:
+| Parameter | Function |
+| :----: | --- |
+| `4000:4000` | Web interface |
+
+### Environment Variables (`-e`)
+
+| Env | Function |
+| :----: | --- |
+| `PUID=1000` | User ID for file permissions - see [User / Group Identifiers](#user--group-identifiers) below |
+| `PGID=1000` | Group ID for file permissions - see [User / Group Identifiers](#user--group-identifiers) below |
+| `TZ=UTC` | Timezone (e.g., `America/New_York`) |
+| `SECRET_KEY_BASE` | **Required** - Phoenix secret key (generate with: `openssl rand -base64 48`) |
+| `GUARDIAN_SECRET_KEY` | **Required** - JWT signing key (generate with: `openssl rand -base64 48`) |
+| `PHX_HOST=localhost` | Public hostname for the application |
+| `PORT=4000` | Web server port |
+| `MOVIES_PATH=/media/movies` | Movies directory path |
+| `TV_PATH=/media/tv` | TV shows directory path |
+
+See the **[Environment Variables Reference](#-environment-variables-reference)** section below for complete configuration options including download clients, indexers, and authentication.
+
+### Volume Mappings (`-v`)
+
+| Volume | Function |
+| :----: | --- |
+| `/config` | Application data, database, and configuration files |
+| `/media/movies` | Movies library location |
+| `/media/tv` | TV shows library location |
+| `/media/downloads` | Download client output directory (optional) |
+
+## 👤 User / Group Identifiers
+
+When using volumes (`-v` flags), permissions issues can arise between the host and container. To avoid this, specify the user `PUID` and group `PGID` to ensure files created by the container are owned by your user.
+
+**Finding your IDs:**
 
 ```bash
-# With Docker Compose
-docker compose pull
-docker compose up -d
-
-# With Docker Run
-docker pull ghcr.io/arsfeld/mydia:latest
-docker stop mydia && docker rm mydia
-# Then run the docker run command again
+id your_user
 ```
 
-Migrations run automatically on startup.
+Example output: `uid=1000(your_user) gid=1000(your_user)`
+
+Use these values for `PUID` and `PGID` in your container configuration.
+
+## 🔄 Updating the Container
+
+### Via Docker Compose
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### Via Docker CLI
+
+```bash
+docker stop mydia
+docker rm mydia
+docker pull ghcr.io/arsfeld/mydia:latest
+# Run your docker run command again
+```
+
+**Note:** Migrations run automatically on startup. Your data in `/config` is preserved across updates.
 
 See [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) for advanced deployment topics.
 
@@ -189,7 +225,15 @@ See [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) for advanced deployment topic
 |----------|-------------|---------|
 | `SECRET_KEY_BASE` | Phoenix secret key for cookies/sessions | Generate with: `openssl rand -base64 48` |
 | `GUARDIAN_SECRET_KEY` | JWT signing key for authentication | Generate with: `openssl rand -base64 48` |
-| `DATABASE_PATH` | Path to SQLite database file | `/data/mydia.db` |
+
+### Container Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUID` | User ID for file permissions | `1000` |
+| `PGID` | Group ID for file permissions | `1000` |
+| `TZ` | Timezone (e.g., `America/New_York`, `Europe/London`) | `UTC` |
+| `DATABASE_PATH` | Path to SQLite database file | `/config/mydia.db` |
 
 ### Server Configuration
 
