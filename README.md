@@ -41,17 +41,20 @@ Visit [localhost:4000](http://localhost:4000)
 
 ## 📦 Production Deployment
 
-For production deployment with Docker:
+Pre-built Docker images are available for multiple platforms (amd64, arm64):
 
 ```bash
-# Build the production image
-docker build -t mydia:latest -f Dockerfile .
+# Pull the latest image
+docker pull ghcr.io/arsfeld/mydia:latest
+
+# Or pull a specific version
+docker pull ghcr.io/arsfeld/mydia:v1.0.0
 
 # Run with docker-compose
 docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete production deployment instructions.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete production deployment instructions including environment configuration, volume setup, and upgrade procedures.
 
 ## 🔧 Development
 

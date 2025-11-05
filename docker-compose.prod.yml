@@ -1,9 +1,6 @@
 services:
   mydia:
-    image: mydia:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/arsfeld/mydia:latest
     container_name: mydia
     restart: unless-stopped
 

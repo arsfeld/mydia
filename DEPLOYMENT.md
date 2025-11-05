@@ -2,6 +2,30 @@
 
 This guide covers deploying Mydia using Docker in a production environment.
 
+## Installation Options
+
+### Option 1: Pre-built Images (Recommended)
+
+Pull the latest pre-built image from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/arsfeld/mydia:latest
+```
+
+Or pull a specific version:
+
+```bash
+docker pull ghcr.io/arsfeld/mydia:v1.0.0
+```
+
+### Option 2: Build from Source
+
+Build the image locally from the repository:
+
+```bash
+docker build -t mydia:latest -f Dockerfile .
+```
+
 ## Quick Start
 
 ### 1. Generate Secrets
@@ -31,13 +55,26 @@ Edit `.env.prod` and set:
 - `MEDIA_PATH_*` - Paths to your media directories
 - (Optional) OIDC settings for authentication
 
-### 3. Build the Image
+### 3. Pull the Image
 
 ```bash
-docker build -t mydia:latest -f Dockerfile .
+docker pull ghcr.io/arsfeld/mydia:latest
 ```
 
-### 4. Run with Docker Compose
+Or skip this step - docker-compose will pull the image automatically.
+
+### 4. Update docker-compose.prod.yml
+
+Ensure your `docker-compose.prod.yml` references the published image:
+
+```yaml
+services:
+  mydia:
+    image: ghcr.io/arsfeld/mydia:latest  # Or specify a version like :v1.0.0
+    # ... rest of configuration
+```
+
+### 5. Run with Docker Compose
 
 ```bash
 docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
@@ -56,7 +93,7 @@ docker run -d \
   -v /path/to/movies:/media/movies \
   -v /path/to/tv:/media/tv \
   -v /path/to/downloads:/media/downloads \
-  mydia:latest
+  ghcr.io/arsfeld/mydia:latest
 ```
 
 ## Health Check
@@ -148,7 +185,7 @@ docker exec mydia ls -la /data
 
 To upgrade to a new version:
 
-1. Pull/build the new image
+1. Pull the new image
 2. Stop the current container
 3. Start a new container with the new image
 
@@ -156,6 +193,54 @@ Migrations will run automatically on startup.
 
 ```bash
 docker-compose -f docker-compose.prod.yml --env-file .env.prod down
-docker build -t mydia:latest -f Dockerfile .
+docker pull ghcr.io/arsfeld/mydia:latest
 docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
+
+To upgrade to a specific version, specify the version tag:
+
+```bash
+docker pull ghcr.io/arsfeld/mydia:v1.0.0
+# Update docker-compose.prod.yml to use the specific version
+docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
+```
+
+## Release Process
+
+Mydia uses automated CI/CD to build and publish Docker images.
+
+### For Maintainers: Creating a Release
+
+To create a new release:
+
+1. Update version numbers if needed (in mix.exs, etc.)
+2. Commit all changes
+3. Create and push a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+4. GitHub Actions will automatically:
+   - Build multi-platform Docker images (amd64, arm64)
+   - Tag the image with the version number and 'latest'
+   - Publish to GitHub Container Registry
+   - Generate build attestation for supply chain security
+
+5. Monitor the workflow at: https://github.com/arsfeld/mydia/actions
+
+### Available Image Tags
+
+Images are published to `ghcr.io/arsfeld/mydia` with the following tags:
+
+- `latest` - Most recent stable release
+- `v1.0.0` - Specific version (full semver)
+- `v1.0` - Minor version (receives patch updates)
+- `v1` - Major version (receives minor and patch updates)
+
+### Image Platforms
+
+All images support multiple platforms:
+- `linux/amd64` - Standard x86_64 systems
+- `linux/arm64` - ARM64 systems (e.g., Apple Silicon, Raspberry Pi 4+)
