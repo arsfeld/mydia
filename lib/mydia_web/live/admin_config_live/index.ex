@@ -127,9 +127,12 @@ defmodule MydiaWeb.AdminConfigLive.Index do
         :edit -> socket.assigns.editing_quality_profile
       end
 
+    # Transform params to match schema
+    transformed_params = transform_quality_profile_params(params)
+
     changeset =
       profile
-      |> Settings.change_quality_profile(params)
+      |> Settings.change_quality_profile(transformed_params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, :quality_profile_form, to_form(changeset))}
@@ -137,13 +140,19 @@ defmodule MydiaWeb.AdminConfigLive.Index do
 
   @impl true
   def handle_event("save_quality_profile", %{"quality_profile" => params}, socket) do
+    # Transform params to match schema
+    transformed_params = transform_quality_profile_params(params)
+
     result =
       case socket.assigns.quality_profile_mode do
         :new ->
-          Settings.create_quality_profile(params)
+          Settings.create_quality_profile(transformed_params)
 
         :edit ->
-          Settings.update_quality_profile(socket.assigns.editing_quality_profile, params)
+          Settings.update_quality_profile(
+            socket.assigns.editing_quality_profile,
+            transformed_params
+          )
       end
 
     case result do
@@ -160,6 +169,33 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   end
 
   @impl true
+  def handle_event("duplicate_quality_profile", %{"id" => id}, socket) do
+    profile = Settings.get_quality_profile!(id)
+
+    # Create a new profile with duplicated attributes
+    duplicate_attrs = %{
+      name: "#{profile.name} (Copy)",
+      qualities: profile.qualities,
+      upgrades_allowed: profile.upgrades_allowed,
+      upgrade_until_quality: profile.upgrade_until_quality,
+      rules: profile.rules
+    }
+
+    case Settings.create_quality_profile(duplicate_attrs) do
+      {:ok, _new_profile} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Quality profile duplicated successfully")
+         |> load_configuration_data()}
+
+      {:error, _changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to duplicate quality profile")}
+    end
+  end
+
+  @impl true
   def handle_event("delete_quality_profile", %{"id" => id}, socket) do
     profile = Settings.get_quality_profile!(id)
 
@@ -169,6 +205,14 @@ defmodule MydiaWeb.AdminConfigLive.Index do
          socket
          |> put_flash(:info, "Quality profile deleted successfully")
          |> load_configuration_data()}
+
+      {:error, :profile_in_use} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Cannot delete quality profile - it is assigned to one or more media items. Please reassign those items first."
+         )}
 
       {:error, _changeset} ->
         {:noreply,
@@ -758,4 +802,89 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   defp health_status_label(:healthy), do: "Healthy"
   defp health_status_label(:unhealthy), do: "Unhealthy"
   defp health_status_label(:unknown), do: "Unknown"
+
+  # Transforms quality profile form params to match the schema structure
+  defp transform_quality_profile_params(params) do
+    # Extract rules fields from params
+    rules = %{}
+
+    rules =
+      if params["rules"] do
+        # Parse min_size_mb
+        rules =
+          case params["rules"]["min_size_mb"] do
+            "" -> rules
+            nil -> rules
+            val when is_binary(val) -> Map.put(rules, "min_size_mb", String.to_integer(val))
+            val when is_integer(val) -> Map.put(rules, "min_size_mb", val)
+            _ -> rules
+          end
+
+        # Parse max_size_mb
+        rules =
+          case params["rules"]["max_size_mb"] do
+            "" -> rules
+            nil -> rules
+            val when is_binary(val) -> Map.put(rules, "max_size_mb", String.to_integer(val))
+            val when is_integer(val) -> Map.put(rules, "max_size_mb", val)
+            _ -> rules
+          end
+
+        # Parse preferred_sources (comma-separated string to array)
+        rules =
+          case params["rules"]["preferred_sources"] do
+            "" ->
+              rules
+
+            nil ->
+              rules
+
+            val when is_binary(val) ->
+              sources =
+                val
+                |> String.split(",")
+                |> Enum.map(&String.trim/1)
+                |> Enum.reject(&(&1 == ""))
+
+              Map.put(rules, "preferred_sources", sources)
+
+            val when is_list(val) ->
+              Map.put(rules, "preferred_sources", val)
+
+            _ ->
+              rules
+          end
+
+        # Add description
+        rules =
+          case params["rules"]["description"] do
+            "" -> rules
+            nil -> rules
+            val -> Map.put(rules, "description", val)
+          end
+
+        rules
+      else
+        rules
+      end
+
+    # Handle qualities array - if empty or nil, set to empty list to satisfy validation
+    qualities =
+      case params["qualities"] do
+        nil -> []
+        [] -> []
+        list when is_list(list) -> list
+        _ -> []
+      end
+
+    # Build the final params map
+    %{
+      "name" => params["name"],
+      "qualities" => qualities,
+      "upgrades_allowed" =>
+        params["upgrades_allowed"] == "true" || params["upgrades_allowed"] == true,
+      "upgrade_until_quality" => params["upgrade_until_quality"],
+      "rules" => rules
+    }
+  end
 end

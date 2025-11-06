@@ -1,0 +1,372 @@
+<Layouts.app flash={@flash}>
+  <div class="max-w-7xl mx-auto">
+    <%!-- Header --%>
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">{@page_title}</h1>
+        <p class="text-base-content/70 mt-1">
+          Scan your filesystem and import media files with TMDB metadata
+        </p>
+      </div>
+      <button type="button" phx-click="cancel" class="btn btn-ghost btn-sm">
+        <.icon name="hero-x-mark" class="w-5 h-5" /> Cancel
+      </button>
+    </div>
+
+    <%!-- Progress Steps --%>
+    <div class="mb-8">
+      <ul class="steps steps-horizontal w-full">
+        <li class={"step " <> if(@step in [:select_path, :scanning, :review, :importing, :complete], do: "step-primary", else: "")}>
+          Select Path
+        </li>
+        <li class={"step " <> if(@step in [:scanning, :review, :importing, :complete], do: "step-primary", else: "")}>
+          Scan Files
+        </li>
+        <li class={"step " <> if(@step in [:review, :importing, :complete], do: "step-primary", else: "")}>
+          Review Matches
+        </li>
+        <li class={"step " <> if(@step in [:importing, :complete], do: "step-primary", else: "")}>
+          Import
+        </li>
+        <li class={"step " <> if(@step == :complete, do: "step-primary", else: "")}>
+          Complete
+        </li>
+      </ul>
+    </div>
+
+    <%!-- Step 1: Select Path --%>
+    <%= if @step == :select_path do %>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <h2 class="card-title">Select Directory to Scan</h2>
+          <p class="text-sm text-base-content/70 mb-4">
+            Enter a filesystem path to scan for media files, or choose from your configured library paths.
+          </p>
+
+          <%!-- Manual Path Input --%>
+          <div class="form-control mb-4">
+            <label class="label">
+              <span class="label-text">Directory Path</span>
+            </label>
+            <input
+              type="text"
+              name="path"
+              placeholder="/path/to/media/folder"
+              class="input input-bordered"
+              value={@scan_path}
+              phx-blur="update_path"
+            />
+            <label class="label">
+              <span class="label-text-alt">
+                Enter the full path to the directory containing media files
+              </span>
+            </label>
+          </div>
+
+          <%!-- Quick Select from Library Paths --%>
+          <%= if @library_paths != [] do %>
+            <div class="divider">OR</div>
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Choose from Library Paths</span>
+              </label>
+              <div class="grid grid-cols-1 gap-2">
+                <%= for path <- @library_paths do %>
+                  <button
+                    type="button"
+                    class="btn btn-outline justify-start"
+                    phx-click="select_library_path"
+                    phx-value-path_id={path.id}
+                  >
+                    <.icon name="hero-folder" class="w-5 h-5" />
+                    <span class="flex-1 text-left">{path.path}</span>
+                    <span class="badge badge-sm">{path.type}</span>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+
+          <div class="card-actions justify-end mt-6">
+            <button
+              type="button"
+              class="btn btn-primary"
+              phx-click="start_scan"
+              disabled={String.trim(@scan_path) == ""}
+            >
+              <.icon name="hero-magnifying-glass" class="w-5 h-5" /> Start Scan
+            </button>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Step 2: Scanning --%>
+    <%= if @step == :scanning do %>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body items-center text-center">
+          <span class="loading loading-spinner loading-lg text-primary"></span>
+          <h2 class="card-title mt-4">Scanning Directory</h2>
+          <p class="text-base-content/70">
+            {(@scanning && "Discovering media files...") || "Matching files with TMDB..."}
+          </p>
+          <p class="text-sm text-base-content/50 mt-2">
+            Path: {@scan_path}
+          </p>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Step 2.5: Matching --%>
+    <%= if @matching do %>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body items-center text-center">
+          <span class="loading loading-spinner loading-lg text-primary"></span>
+          <h2 class="card-title mt-4">Matching Files</h2>
+          <p class="text-base-content/70">
+            Matching discovered files with TMDB metadata...
+          </p>
+          <p class="text-sm text-base-content/50 mt-2">
+            Found {@scan_stats.total} new files
+          </p>
+          <%= if @scan_stats.skipped > 0 do %>
+            <div class="alert alert-info mt-4 max-w-md">
+              <.icon name="hero-information-circle" class="w-5 h-5" />
+              <span class="text-sm">
+                Skipped {@scan_stats.skipped} {if(@scan_stats.skipped == 1,
+                  do: "file",
+                  else: "files"
+                )} already in your library
+              </span>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Step 3: Review Matches --%>
+    <%= if @step == :review do %>
+      <div class="mb-6">
+        <%!-- Stats --%>
+        <div class="stats stats-horizontal shadow w-full mb-6">
+          <div class="stat">
+            <div class="stat-title">New Files</div>
+            <div class="stat-value text-primary">{@scan_stats.total}</div>
+            <div class="stat-desc">Ready to import</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Matched</div>
+            <div class="stat-value text-success">{@scan_stats.matched}</div>
+            <div class="stat-desc">With TMDB metadata</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Unmatched</div>
+            <div class="stat-value text-warning">{@scan_stats.unmatched}</div>
+            <div class="stat-desc">No metadata found</div>
+          </div>
+          <%= if @scan_stats.skipped > 0 do %>
+            <div class="stat">
+              <div class="stat-title">Already in Library</div>
+              <div class="stat-value text-base-content/50">{@scan_stats.skipped}</div>
+              <div class="stat-desc">Skipped</div>
+            </div>
+          <% end %>
+          <div class="stat">
+            <div class="stat-title">Selected</div>
+            <div class="stat-value">{MapSet.size(@selected_files)}</div>
+            <div class="stat-desc">To import</div>
+          </div>
+        </div>
+
+        <%!-- Skipped files info --%>
+        <%= if @scan_stats.skipped > 0 do %>
+          <div class="alert alert-info mb-4">
+            <.icon name="hero-information-circle" class="w-5 h-5" />
+            <span class="text-sm">
+              {@scan_stats.skipped} {if(@scan_stats.skipped == 1,
+                do: "file was",
+                else: "files were"
+              )} skipped because {if(@scan_stats.skipped == 1, do: "it is", else: "they are")} already in your library
+            </span>
+          </div>
+        <% end %>
+
+        <%!-- Selection Controls --%>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline" phx-click="select_all_files">
+              Select All Matched
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" phx-click="deselect_all_files">
+              Deselect All
+            </button>
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary"
+            phx-click="start_import"
+            disabled={MapSet.size(@selected_files) == 0}
+          >
+            <.icon name="hero-arrow-down-tray" class="w-5 h-5" />
+            Import Selected ({MapSet.size(@selected_files)})
+          </button>
+        </div>
+
+        <%!-- Files List --%>
+        <div class="space-y-3">
+          <%= for {matched_file, index} <- Enum.with_index(@matched_files) do %>
+            <% is_selected = MapSet.member?(@selected_files, index) %>
+            <% match = matched_file.match_result %>
+            <div class={"card bg-base-100 shadow " <> if(is_selected, do: "ring-2 ring-primary", else: "")}>
+              <div class="card-body p-4">
+                <div class="flex items-start gap-4">
+                  <%!-- Checkbox --%>
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-primary mt-1"
+                    checked={is_selected}
+                    disabled={match == nil}
+                    phx-click="toggle_file_selection"
+                    phx-value-index={index}
+                  />
+
+                  <%!-- File Info --%>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex-1">
+                        <h3 class="font-semibold text-sm truncate">
+                          {Path.basename(matched_file.file.path)}
+                        </h3>
+                        <p class="text-xs text-base-content/60 truncate">
+                          {matched_file.file.path}
+                        </p>
+                        <p class="text-xs text-base-content/50 mt-1">
+                          {format_file_size(matched_file.file.size)}
+                        </p>
+                      </div>
+
+                      <%= if match do %>
+                        <div class="flex flex-col items-end gap-1">
+                          <div class={"badge badge-sm " <> confidence_badge_class(match.match_confidence)}>
+                            {confidence_label(match.match_confidence)} ({Float.round(
+                              match.match_confidence * 100,
+                              0
+                            )}%)
+                          </div>
+                          <%= if match.parsed_info.type == :tv_show do %>
+                            <div class="badge badge-sm badge-info">TV Show</div>
+                          <% else %>
+                            <div class="badge badge-sm badge-accent">Movie</div>
+                          <% end %>
+                        </div>
+                      <% else %>
+                        <div class="badge badge-sm badge-error">No Match</div>
+                      <% end %>
+                    </div>
+
+                    <%= if match do %>
+                      <div class="mt-3 p-3 bg-base-200 rounded-lg">
+                        <div class="flex items-start gap-3">
+                          <%= if match.metadata.poster_path do %>
+                            <img
+                              src={"https://image.tmdb.org/t/p/w92#{match.metadata.poster_path}"}
+                              alt={match.title}
+                              class="w-12 rounded"
+                            />
+                          <% end %>
+                          <div class="flex-1">
+                            <p class="font-semibold text-sm">{match.title}</p>
+                            <%= if match.year do %>
+                              <p class="text-xs text-base-content/60">{match.year}</p>
+                            <% end %>
+                            <%= if match.parsed_info.type == :tv_show and match.parsed_info.season do %>
+                              <p class="text-xs text-base-content/60">
+                                Season {match.parsed_info.season}
+                                <%= if match.parsed_info.episodes do %>
+                                  , Episode(s) {Enum.join(match.parsed_info.episodes, ", ")}
+                                <% end %>
+                              </p>
+                            <% end %>
+                            <%= if match.metadata.overview do %>
+                              <p class="text-xs text-base-content/50 mt-1 line-clamp-2">
+                                {match.metadata.overview}
+                              </p>
+                            <% end %>
+                          </div>
+                        </div>
+                      </div>
+                    <% else %>
+                      <div class="mt-3 p-3 bg-base-200 rounded-lg">
+                        <p class="text-sm text-warning">
+                          <.icon name="hero-exclamation-triangle" class="w-4 h-4 inline" />
+                          Could not match this file with TMDB metadata
+                        </p>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Step 4: Importing --%>
+    <%= if @step == :importing do %>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body items-center text-center">
+          <span class="loading loading-spinner loading-lg text-primary"></span>
+          <h2 class="card-title mt-4">Importing Files</h2>
+          <p class="text-base-content/70">
+            Please wait while files are being imported...
+          </p>
+
+          <div class="w-full max-w-md mt-6">
+            <progress
+              class="progress progress-primary w-full"
+              value={@import_progress.current}
+              max={@import_progress.total}
+            >
+            </progress>
+            <p class="text-sm text-base-content/60 mt-2">
+              {@import_progress.current} / {@import_progress.total} files
+            </p>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Step 5: Complete --%>
+    <%= if @step == :complete do %>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body items-center text-center">
+          <div class="text-success">
+            <.icon name="hero-check-circle" class="w-24 h-24" />
+          </div>
+          <h2 class="card-title text-2xl mt-4">Import Complete!</h2>
+
+          <div class="stats stats-vertical lg:stats-horizontal shadow mt-6">
+            <div class="stat">
+              <div class="stat-title">Successfully Imported</div>
+              <div class="stat-value text-success">{@import_results.success}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Failed</div>
+              <div class="stat-value text-error">{@import_results.failed}</div>
+            </div>
+          </div>
+
+          <div class="card-actions mt-6">
+            <button type="button" class="btn btn-outline" phx-click="start_over">
+              <.icon name="hero-arrow-path" class="w-5 h-5" /> Import More Files
+            </button>
+            <button type="button" class="btn btn-primary" phx-click="cancel">
+              <.icon name="hero-check" class="w-5 h-5" /> Done
+            </button>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</Layouts.app>

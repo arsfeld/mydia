@@ -182,14 +182,24 @@
                             class="btn btn-sm btn-ghost"
                             phx-click="edit_quality_profile"
                             phx-value-id={profile.id}
+                            title="Edit"
                           >
                             <.icon name="hero-pencil" class="w-4 h-4" />
+                          </button>
+                          <button
+                            class="btn btn-sm btn-ghost"
+                            phx-click="duplicate_quality_profile"
+                            phx-value-id={profile.id}
+                            title="Duplicate"
+                          >
+                            <.icon name="hero-document-duplicate" class="w-4 h-4" />
                           </button>
                           <button
                             class="btn btn-sm btn-ghost btn-error"
                             phx-click="delete_quality_profile"
                             phx-value-id={profile.id}
                             data-confirm="Are you sure you want to delete this quality profile?"
+                            title="Delete"
                           >
                             <.icon name="hero-trash" class="w-4 h-4" />
                           </button>
@@ -471,7 +481,7 @@
     <%!-- Quality Profile Modal --%>
     <%= if assigns[:show_quality_profile_modal] do %>
       <div class="modal modal-open">
-        <div class="modal-box">
+        <div class="modal-box max-w-3xl">
           <h3 class="font-bold text-lg mb-4">
             {if @quality_profile_mode == :new,
               do: "New Quality Profile",
@@ -485,21 +495,90 @@
             phx-submit="save_quality_profile"
           >
             <div class="space-y-4">
+              <%!-- Basic Settings --%>
               <.input field={@quality_profile_form[:name]} type="text" label="Name" required />
+              <%!-- Allowed Qualities --%>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">
+                    Allowed Qualities <span class="text-error">*</span>
+                  </span>
+                </label>
+                <div class="grid grid-cols-3 gap-2">
+                  <%= for quality <- ["360p", "480p", "576p", "720p", "1080p", "2160p"] do %>
+                    <label class="label cursor-pointer justify-start gap-2">
+                      <input
+                        type="checkbox"
+                        name="quality_profile[qualities][]"
+                        value={quality}
+                        checked={
+                          quality in (Ecto.Changeset.get_field(
+                                        @quality_profile_form.source,
+                                        :qualities
+                                      ) || [])
+                        }
+                        class="checkbox checkbox-sm"
+                      />
+                      <span class="label-text">{quality}</span>
+                    </label>
+                  <% end %>
+                </div>
+                <%= if @quality_profile_form.errors[:qualities] do %>
+                  <label class="label">
+                    <span class="label-text-alt text-error">
+                      {translate_error(@quality_profile_form.errors[:qualities])}
+                    </span>
+                  </label>
+                <% end %>
+              </div>
+              <%!-- Upgrade Settings --%>
               <.input
-                field={@quality_profile_form[:min_size_mb]}
-                type="number"
-                label="Minimum Size (MB)"
+                field={@quality_profile_form[:upgrades_allowed]}
+                type="checkbox"
+                label="Allow Quality Upgrades"
               />
+              <%= if Ecto.Changeset.get_field(@quality_profile_form.source, :upgrades_allowed, true) do %>
+                <.input
+                  field={@quality_profile_form[:upgrade_until_quality]}
+                  type="select"
+                  label="Upgrade Until Quality"
+                  options={[
+                    {"Don't upgrade", nil}
+                    | Enum.map(["480p", "576p", "720p", "1080p", "2160p"], &{&1, &1})
+                  ]}
+                />
+              <% end %>
+              <%!-- Size Constraints --%>
+              <div class="divider">Size Constraints</div>
+              <div class="grid grid-cols-2 gap-4">
+                <.input
+                  field={@quality_profile_form[:rules]["min_size_mb"]}
+                  type="number"
+                  label="Minimum Size (MB)"
+                  min="0"
+                  step="1"
+                />
+                <.input
+                  field={@quality_profile_form[:rules]["max_size_mb"]}
+                  type="number"
+                  label="Maximum Size (MB)"
+                  min="0"
+                  step="1"
+                />
+              </div>
+              <%!-- Preferred Sources --%>
               <.input
-                field={@quality_profile_form[:max_size_mb]}
-                type="number"
-                label="Maximum Size (MB)"
-              />
-              <.input
-                field={@quality_profile_form[:preferred_quality]}
+                field={@quality_profile_form[:rules]["preferred_sources"]}
                 type="text"
-                label="Preferred Quality"
+                label="Preferred Sources (comma-separated)"
+                placeholder="BluRay, WEB-DL, HDTV"
+              />
+              <%!-- Description --%>
+              <.input
+                field={@quality_profile_form[:rules]["description"]}
+                type="textarea"
+                label="Description"
+                rows="2"
               />
             </div>
 

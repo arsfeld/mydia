@@ -5,6 +5,7 @@ defmodule MydiaWeb.SearchLive.Index do
   alias Mydia.Library.FileParser
   alias Mydia.Metadata
   alias Mydia.Media
+  alias Mydia.Downloads
 
   require Logger
 
@@ -30,13 +31,14 @@ defmodule MydiaWeb.SearchLive.Index do
      |> assign(:metadata_media_type, nil)
      |> assign(:pending_parsed, nil)
      |> assign(:pending_release_title, nil)
-     |> assign(:pending_download_url, nil)
+     |> assign(:pending_search_result, nil)
      |> assign(:should_download_after_add, false)
      |> assign(:show_manual_search_modal, false)
      |> assign(:manual_search_query, "")
      |> assign(:failed_release_title, nil)
      |> assign(:show_retry_modal, false)
      |> assign(:retry_error_message, nil)
+     |> assign(:search_results_map, %{})
      |> stream_configure(:search_results, dom_id: &generate_result_id/1)
      |> stream(:search_results, [])}
   end
@@ -132,15 +134,21 @@ defmodule MydiaWeb.SearchLive.Index do
   end
 
   def handle_event("add_to_library", %{"title" => title} = params, socket) do
-    # Store download URL if provided for later use
+    # Store search result if provided for later use (for download)
     download_url = Map.get(params, "download_url")
     should_download = Map.get(params, "download", "false") == "true"
+
+    # Find the full search result from our map
+    search_result =
+      if download_url do
+        Map.get(socket.assigns.search_results_map, download_url)
+      end
 
     # Start async task to add media to library
     {:noreply,
      socket
      |> assign(:pending_release_title, title)
-     |> assign(:pending_download_url, download_url)
+     |> assign(:pending_search_result, search_result)
      |> assign(:should_download_after_add, should_download)
      |> start_async(:add_to_library, fn -> add_release_to_library(title) end)}
   end
@@ -279,11 +287,68 @@ defmodule MydiaWeb.SearchLive.Index do
     {:noreply, socket}
   end
 
-  def handle_info({:trigger_download, download_url, title}, socket) do
+  def handle_info({:trigger_download, search_result, media_item_id, title}, socket) do
     # This will be called after adding to library if download was requested
-    # Currently just logs, but will integrate with actual download functionality
-    Logger.info("Download triggered for: #{title} from #{download_url}")
-    {:noreply, socket}
+    Logger.info("Initiating download for: #{title}")
+
+    case Downloads.initiate_download(search_result, media_item_id: media_item_id) do
+      {:ok, download} ->
+        Logger.info("Download initiated successfully: #{download.title}")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "#{title} added to library and download started. View in Downloads queue."
+         )}
+
+      {:error, :duplicate_download} ->
+        Logger.info("Skipping download - already exists")
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{title} added to library. Download already in progress.")}
+
+      {:error, :no_clients_configured} ->
+        Logger.warning("Cannot initiate download - no download clients configured")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :warning,
+           "#{title} added to library, but no download clients are configured. Please configure a download client in settings."
+         )}
+
+      {:error, {:client_not_found, client_name}} ->
+        Logger.error("Download client not found: #{client_name}")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "#{title} added to library, but download client '#{client_name}' not found."
+         )}
+
+      {:error, {:client_error, error}} ->
+        Logger.error("Download client error: #{inspect(error)}")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "#{title} added to library, but download failed: #{format_client_error(error)}"
+         )}
+
+      {:error, reason} ->
+        Logger.error("Failed to initiate download: #{inspect(reason)}")
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "#{title} added to library, but download failed: #{inspect(reason)}"
+         )}
+    end
   end
 
   @impl true
@@ -301,10 +366,17 @@ defmodule MydiaWeb.SearchLive.Index do
         "processing_time=#{duration}ms"
     )
 
+    # Store results in a map for quick lookup by download_url
+    results_map =
+      results
+      |> Enum.map(fn result -> {result.download_url, result} end)
+      |> Map.new()
+
     {:noreply,
      socket
      |> assign(:searching, false)
      |> assign(:results_empty?, sorted_results == [])
+     |> assign(:search_results_map, results_map)
      |> stream(:search_results, sorted_results, reset: true)}
   end
 
@@ -345,13 +417,17 @@ defmodule MydiaWeb.SearchLive.Index do
     Logger.info("Successfully added #{media_item.title} to library")
 
     socket =
-      if socket.assigns.should_download_after_add && socket.assigns.pending_download_url do
+      if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
         Logger.info("Triggering download for #{media_item.title}")
-        # Trigger download - this will be handled by the download event
-        send(self(), {:trigger_download, socket.assigns.pending_download_url, media_item.title})
+        # Trigger download - this will be handled by the download handler
+        send(
+          self(),
+          {:trigger_download, socket.assigns.pending_search_result, media_item.id,
+           media_item.title}
+        )
 
         socket
-        |> put_flash(:info, "#{media_item.title} added to library and download started")
+        |> put_flash(:info, "#{media_item.title} added to library")
       else
         socket
         |> put_flash(:info, "#{media_item.title} added to library")
@@ -409,12 +485,17 @@ defmodule MydiaWeb.SearchLive.Index do
     Logger.info("Successfully added #{media_item.title} to library after disambiguation")
 
     socket =
-      if socket.assigns.should_download_after_add && socket.assigns.pending_download_url do
+      if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
         Logger.info("Triggering download for #{media_item.title}")
-        send(self(), {:trigger_download, socket.assigns.pending_download_url, media_item.title})
+
+        send(
+          self(),
+          {:trigger_download, socket.assigns.pending_search_result, media_item.id,
+           media_item.title}
+        )
 
         socket
-        |> put_flash(:info, "#{media_item.title} added to library and download started")
+        |> put_flash(:info, "#{media_item.title} added to library")
       else
         socket
         |> put_flash(:info, "#{media_item.title} added to library")
@@ -844,4 +925,7 @@ defmodule MydiaWeb.SearchLive.Index do
       monitored: true
     }
   end
+
+  defp format_client_error(error) when is_binary(error), do: error
+  defp format_client_error(error), do: inspect(error)
 end

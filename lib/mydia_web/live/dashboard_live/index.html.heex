@@ -51,6 +51,57 @@
     </div>
   </div>
   
+<!-- Quick Actions -->
+  <div class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Quick Actions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <.link
+        navigate={~p"/add/movie"}
+        class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow"
+      >
+        <div class="card-body flex-row items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <.icon name="hero-plus" class="w-6 h-6 text-primary" />
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold">Add Movie</h3>
+            <p class="text-sm text-base-content/60">Search and add movies</p>
+          </div>
+        </div>
+      </.link>
+
+      <.link
+        navigate={~p"/add/series"}
+        class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow"
+      >
+        <div class="card-body flex-row items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center">
+            <.icon name="hero-plus" class="w-6 h-6 text-secondary" />
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold">Add TV Show</h3>
+            <p class="text-sm text-base-content/60">Search and add series</p>
+          </div>
+        </div>
+      </.link>
+
+      <.link
+        navigate={~p"/import"}
+        class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow"
+      >
+        <div class="card-body flex-row items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+            <.icon name="hero-arrow-down-tray" class="w-6 h-6 text-accent" />
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold">Import Files</h3>
+            <p class="text-sm text-base-content/60">Scan and import media</p>
+          </div>
+        </div>
+      </.link>
+    </div>
+  </div>
+  
 <!-- Trending Movies -->
   <div class="mb-8">
     <div class="flex items-center justify-between mb-4">

@@ -1,9 +1,10 @@
 ---
 id: task-29
 title: Implement download initiation from search results UI
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-04 16:00'
+updated_date: '2025-11-06 01:04'
 labels:
   - downloads
   - liveview
@@ -48,12 +49,41 @@ Use existing `Mydia.Downloads` context and download client adapters from task-21
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Download button in search results sends torrent to download client
-- [ ] #2 Creates Download record with pending status and metadata
-- [ ] #3 Handles multiple configured download clients (selection or priority)
-- [ ] #4 Shows success message with link to downloads queue
-- [ ] #5 Handles errors gracefully (client offline, invalid torrent, etc.)
-- [ ] #6 Download appears in downloads queue UI immediately
-- [ ] #7 Download monitoring job picks up and tracks status
-- [ ] #8 Can optionally associate download with media_item_id if known
+- [x] #1 Download button in search results sends torrent to download client
+- [x] #2 Creates Download record with pending status and metadata
+- [x] #3 Handles multiple configured download clients (selection or priority)
+- [x] #4 Shows success message with link to downloads queue
+- [x] #5 Handles errors gracefully (client offline, invalid torrent, etc.)
+- [x] #6 Download appears in downloads queue UI immediately
+- [x] #7 Download monitoring job picks up and tracks status
+- [x] #8 Can optionally associate download with media_item_id if known
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Review (2025-11-05)
+
+Current status: STUBBED BUT NOT IMPLEMENTED
+
+**What exists:**
+- UI handles "add to library" with optional download flag
+- Assigns stored: pending_download_url, should_download_after_add
+- handle_info(:trigger_download) exists at search_live/index.ex:282-287
+
+**What's missing:**
+- The :trigger_download handler only logs, doesn't actually initiate downloads
+- Comment says: "Currently just logs, but will integrate with actual download functionality"
+- No call to Downloads.create_download/1 or similar
+- No download client selection logic
+- No error handling for download failures
+
+**To implement:**
+1. Add Downloads context call in handle_info(:trigger_download)
+2. Implement download client selection/priority logic
+3. Add error handling and user feedback
+4. Associate download with media_item_id if known
+5. Show success message with link to downloads queue
+
+This task is properly scoped and ready to be worked on.
+<!-- SECTION:NOTES:END -->

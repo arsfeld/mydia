@@ -1316,7 +1316,10 @@
                       <span class="badge badge-ghost badge-xs">Same</span>
                     <% end %>
                     <div class="flex-1 min-w-0">
-                      <div class="font-mono text-base-content/60 truncate" title={preview.current_filename}>
+                      <div
+                        class="font-mono text-base-content/60 truncate"
+                        title={preview.current_filename}
+                      >
                         {preview.current_filename}
                       </div>
                       <div class="flex items-center gap-1 mt-0.5">
@@ -1340,7 +1343,9 @@
           <%= if !Enum.empty?(@rename_previews) do %>
             <div class="flex items-center justify-between gap-3">
               <div class="text-xs text-base-content/70">
-                {Enum.count(@rename_previews, fn p -> p.current_filename != p.proposed_filename end)} of {length(@rename_previews)} will be renamed
+                {Enum.count(@rename_previews, fn p ->
+                  p.current_filename != p.proposed_filename
+                end)} of {length(@rename_previews)} will be renamed
               </div>
               <div class="flex gap-2">
                 <button

@@ -58,6 +58,16 @@ defmodule Mydia.Library do
   end
 
   @doc """
+  Creates a media file during library scanning.
+  Parent association is optional and will be set later during metadata enrichment.
+  """
+  def create_scanned_media_file(attrs \\ %{}) do
+    %MediaFile{}
+    |> MediaFile.scan_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
   Updates a media file.
   """
   def update_media_file(%MediaFile{} = media_file, attrs) do

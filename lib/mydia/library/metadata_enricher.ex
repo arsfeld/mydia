@@ -104,11 +104,7 @@ defmodule Mydia.Library.MetadataEnricher do
 
         case Media.create_media_item(attrs) do
           {:ok, media_item} ->
-            # For TV shows, always fetch all episodes
-            if media_type == :tv_show do
-              Media.refresh_episodes_for_tv_show(media_item, season_monitoring: "all")
-            end
-
+            # Episodes will be fetched by enrich_episodes if needed
             {:ok, media_item}
 
           error ->

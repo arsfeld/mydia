@@ -108,9 +108,27 @@ defmodule Mydia.Settings do
 
   @doc """
   Deletes a quality profile.
+
+  Returns `{:error, :profile_in_use}` if the profile is assigned to any media items.
   """
   def delete_quality_profile(%QualityProfile{} = quality_profile) do
-    Repo.delete(quality_profile)
+    # Check if profile is assigned to any media items
+    if profile_in_use?(quality_profile.id) do
+      {:error, :profile_in_use}
+    else
+      Repo.delete(quality_profile)
+    end
+  end
+
+  @doc """
+  Checks if a quality profile is assigned to any media items.
+  """
+  def profile_in_use?(profile_id) do
+    alias Mydia.Media.MediaItem
+
+    MediaItem
+    |> where([m], m.quality_profile_id == ^profile_id)
+    |> Repo.exists?()
   end
 
   @doc """

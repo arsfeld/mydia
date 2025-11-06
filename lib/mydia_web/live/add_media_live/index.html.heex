@@ -14,113 +14,118 @@
     </div>
 
     <%!-- Configuration Toolbar --%>
-    <div class="bg-base-100 rounded-lg p-4 mb-6 shadow-lg">
-      <h3 class="text-sm font-semibold mb-3 text-base-content/70">Quick Add Settings</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <%!-- Root Folder --%>
-        <div class="form-control">
-          <label class="label py-1">
-            <span class="label-text text-xs">Root Folder</span>
-          </label>
-          <%= if @library_paths == [] do %>
-            <div class="text-xs text-error">No library paths configured</div>
-          <% else %>
+    <div class="collapse collapse-arrow bg-base-100 rounded-lg mb-6 shadow-lg">
+      <input type="checkbox" id="quick-add-settings-toggle" />
+      <div class="collapse-title text-sm font-semibold text-base-content/70">
+        Quick Add Settings
+      </div>
+      <div class="collapse-content">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <%!-- Root Folder --%>
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs">Root Folder</span>
+            </label>
+            <%= if @library_paths == [] do %>
+              <div class="text-xs text-error">No library paths configured</div>
+            <% else %>
+              <select
+                class="select select-bordered select-sm"
+                phx-change="update_toolbar"
+                phx-value-field="toolbar_library_path_id"
+              >
+                <%= for path <- @library_paths do %>
+                  <option value={path.id} selected={@toolbar_library_path_id == path.id}>
+                    {path.path}
+                  </option>
+                <% end %>
+              </select>
+            <% end %>
+          </div>
+          <%!-- Quality Profile --%>
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs">Quality Profile</span>
+            </label>
             <select
               class="select select-bordered select-sm"
               phx-change="update_toolbar"
-              phx-value-field="toolbar_library_path_id"
+              phx-value-field="toolbar_quality_profile_id"
             >
-              <%= for path <- @library_paths do %>
-                <option value={path.id} selected={@toolbar_library_path_id == path.id}>
-                  {path.path}
+              <option value="" selected={@toolbar_quality_profile_id == nil}>Any Quality</option>
+              <%= for profile <- @quality_profiles do %>
+                <option value={profile.id} selected={@toolbar_quality_profile_id == profile.id}>
+                  {profile.name}
                 </option>
               <% end %>
             </select>
-          <% end %>
+          </div>
+          <%!-- Monitor Toggle --%>
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs">Monitor</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                class="toggle toggle-primary toggle-sm"
+                checked={@toolbar_monitored}
+                phx-click="update_toolbar"
+                phx-value-field="toolbar_monitored"
+                phx-value-value={to_string(!@toolbar_monitored)}
+              />
+              <span class="text-xs">
+                {(@toolbar_monitored && "Monitored") || "Unmonitored"}
+              </span>
+            </div>
+          </div>
+          <%!-- Search on Add --%>
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs">Search on Add</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                class="toggle toggle-primary toggle-sm"
+                checked={@toolbar_search_on_add}
+                phx-click="update_toolbar"
+                phx-value-field="toolbar_search_on_add"
+                phx-value-value={to_string(!@toolbar_search_on_add)}
+              />
+              <span class="text-xs">
+                {(@toolbar_search_on_add && "Enabled") || "Disabled"}
+              </span>
+            </div>
+          </div>
         </div>
-        <%!-- Quality Profile --%>
-        <div class="form-control">
-          <label class="label py-1">
-            <span class="label-text text-xs">Quality Profile</span>
-          </label>
-          <select
-            class="select select-bordered select-sm"
-            phx-change="update_toolbar"
-            phx-value-field="toolbar_quality_profile_id"
-          >
-            <option value="" selected={@toolbar_quality_profile_id == nil}>Any Quality</option>
-            <%= for profile <- @quality_profiles do %>
-              <option value={profile.id} selected={@toolbar_quality_profile_id == profile.id}>
-                {profile.name}
+        <%!-- Season Monitoring for TV Shows --%>
+        <%= if @media_type == :tv_show do %>
+          <div class="form-control mt-4 max-w-xs">
+            <label class="label py-1">
+              <span class="label-text text-xs">Season Monitoring</span>
+            </label>
+            <select
+              class="select select-bordered select-sm"
+              phx-change="update_toolbar"
+              phx-value-field="toolbar_season_monitoring"
+            >
+              <option value="all" selected={@toolbar_season_monitoring == "all"}>
+                Monitor All Seasons
               </option>
-            <% end %>
-          </select>
-        </div>
-        <%!-- Monitor Toggle --%>
-        <div class="form-control">
-          <label class="label py-1">
-            <span class="label-text text-xs">Monitor</span>
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              class="toggle toggle-primary toggle-sm"
-              checked={@toolbar_monitored}
-              phx-click="update_toolbar"
-              phx-value-field="toolbar_monitored"
-              phx-value-value={to_string(!@toolbar_monitored)}
-            />
-            <span class="text-xs">
-              {(@toolbar_monitored && "Monitored") || "Unmonitored"}
-            </span>
+              <option value="first" selected={@toolbar_season_monitoring == "first"}>
+                Monitor First Season Only
+              </option>
+              <option value="future" selected={@toolbar_season_monitoring == "future"}>
+                Monitor Future Seasons
+              </option>
+              <option value="none" selected={@toolbar_season_monitoring == "none"}>
+                Don't Monitor Any Seasons
+              </option>
+            </select>
           </div>
-        </div>
-        <%!-- Search on Add --%>
-        <div class="form-control">
-          <label class="label py-1">
-            <span class="label-text text-xs">Search on Add</span>
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              class="toggle toggle-primary toggle-sm"
-              checked={@toolbar_search_on_add}
-              phx-click="update_toolbar"
-              phx-value-field="toolbar_search_on_add"
-              phx-value-value={to_string(!@toolbar_search_on_add)}
-            />
-            <span class="text-xs">
-              {(@toolbar_search_on_add && "Enabled") || "Disabled"}
-            </span>
-          </div>
-        </div>
+        <% end %>
       </div>
-      <%!-- Season Monitoring for TV Shows --%>
-      <%= if @media_type == :tv_show do %>
-        <div class="form-control mt-4 max-w-xs">
-          <label class="label py-1">
-            <span class="label-text text-xs">Season Monitoring</span>
-          </label>
-          <select
-            class="select select-bordered select-sm"
-            phx-change="update_toolbar"
-            phx-value-field="toolbar_season_monitoring"
-          >
-            <option value="all" selected={@toolbar_season_monitoring == "all"}>
-              Monitor All Seasons
-            </option>
-            <option value="first" selected={@toolbar_season_monitoring == "first"}>
-              Monitor First Season Only
-            </option>
-            <option value="future" selected={@toolbar_season_monitoring == "future"}>
-              Monitor Future Seasons
-            </option>
-            <option value="none" selected={@toolbar_season_monitoring == "none"}>
-              Don't Monitor Any Seasons
-            </option>
-          </select>
-        </div>
-      <% end %>
     </div>
 
     <%!-- Search Bar --%>

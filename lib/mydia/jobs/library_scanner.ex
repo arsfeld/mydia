@@ -15,7 +15,7 @@ defmodule Mydia.Jobs.LibraryScanner do
 
   require Logger
   alias Mydia.{Library, Settings, Repo, Metadata}
-  alias Mydia.Library.{FileParser, MetadataMatcher, MetadataEnricher}
+  alias Mydia.Library.{MetadataMatcher, MetadataEnricher}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -123,53 +123,78 @@ defmodule Mydia.Jobs.LibraryScanner do
     # Detect changes
     changes = Library.Scanner.detect_changes(scan_result, existing_files)
 
-    # Get metadata provider config
-    metadata_config = Metadata.default_relay_config()
+    # Process changes in a transaction (file operations only, no metadata enrichment)
+    transaction_result =
+      Repo.transaction(fn ->
+        # Add new files (without metadata enrichment)
+        new_media_files =
+          Enum.map(changes.new_files, fn file_info ->
+            case Library.create_scanned_media_file(%{
+                   path: file_info.path,
+                   size: file_info.size,
+                   verified_at: DateTime.utc_now()
+                 }) do
+              {:ok, media_file} ->
+                Logger.debug("Added new media file", path: file_info.path)
+                {:ok, media_file, file_info}
 
-    # Process changes in a transaction
-    Repo.transaction(fn ->
-      # Add new files and try to match/enrich them
-      Enum.each(changes.new_files, fn file_info ->
-        {:ok, media_file} =
-          Library.create_media_file(%{
-            path: file_info.path,
-            size: file_info.size,
-            quality: detect_quality(file_info.filename),
-            format: String.trim_leading(file_info.extension, "."),
-            verified_at: DateTime.utc_now()
-          })
+              {:error, changeset} ->
+                Logger.error("Failed to create media file",
+                  path: file_info.path,
+                  errors: inspect(changeset.errors)
+                )
 
-        Logger.debug("Added new media file", path: file_info.path)
+                {:error, file_info}
+            end
+          end)
 
-        # Try to parse, match, and enrich the file
-        process_media_file(media_file, file_info, metadata_config)
+        # Update modified files
+        Enum.each(changes.modified_files, fn file_info ->
+          case Library.get_media_file_by_path(file_info.path) do
+            nil ->
+              Logger.warning("Modified file not found in database", path: file_info.path)
+
+            media_file ->
+              {:ok, _} =
+                Library.update_media_file(media_file, %{
+                  size: file_info.size,
+                  verified_at: DateTime.utc_now()
+                })
+
+              Logger.debug("Updated media file", path: file_info.path)
+          end
+        end)
+
+        # Mark deleted files
+        Enum.each(changes.deleted_files, fn media_file ->
+          {:ok, _} = Library.delete_media_file(media_file)
+          Logger.debug("Deleted media file record", path: media_file.path)
+        end)
+
+        %{changes: changes, scan_result: scan_result, new_media_files: new_media_files}
       end)
 
-      # Update modified files
-      Enum.each(changes.modified_files, fn file_info ->
-        case Library.get_media_file_by_path(file_info.path) do
-          nil ->
-            Logger.warning("Modified file not found in database", path: file_info.path)
+    # After transaction commits, enrich new files with metadata (outside transaction)
+    case transaction_result do
+      {:ok, result} ->
+        # Get metadata provider config
+        metadata_config = Metadata.default_relay_config()
 
-          media_file ->
-            {:ok, _} =
-              Library.update_media_file(media_file, %{
-                size: file_info.size,
-                verified_at: DateTime.utc_now()
-              })
+        # Process metadata enrichment for new files (outside transaction)
+        Enum.each(result.new_media_files, fn
+          {:ok, media_file, file_info} ->
+            # Try to parse, match, and enrich the file
+            process_media_file(media_file, file_info, metadata_config)
 
-            Logger.debug("Updated media file", path: file_info.path)
-        end
-      end)
+          {:error, _file_info} ->
+            :ok
+        end)
 
-      # Mark deleted files
-      Enum.each(changes.deleted_files, fn media_file ->
-        {:ok, _} = Library.delete_media_file(media_file)
-        Logger.debug("Deleted media file record", path: media_file.path)
-      end)
+        {:ok, result}
 
-      %{changes: changes, scan_result: scan_result}
-    end)
+      error ->
+        error
+    end
     |> case do
       {:ok, result} ->
         # Update library path with success status (skip for runtime paths)
@@ -254,19 +279,6 @@ defmodule Mydia.Jobs.LibraryScanner do
   end
 
   defp updatable_library_path?(_), do: true
-
-  # Simple quality detection based on filename patterns
-  defp detect_quality(filename) do
-    filename_lower = String.downcase(filename)
-
-    cond do
-      String.contains?(filename_lower, ["2160p", "4k", "uhd"]) -> "2160p"
-      String.contains?(filename_lower, ["1080p", "fhd"]) -> "1080p"
-      String.contains?(filename_lower, ["720p", "hd"]) -> "720p"
-      String.contains?(filename_lower, ["480p", "sd"]) -> "480p"
-      true -> "Unknown"
-    end
-  end
 
   defp process_media_file(media_file, file_info, metadata_config) do
     Logger.debug("Processing media file for metadata", path: file_info.path)
