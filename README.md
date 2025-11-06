@@ -110,7 +110,10 @@ openssl rand -base64 48
 
 2. Set up your container using Docker Compose (recommended) or Docker CLI
 3. Access the web interface at `http://your-server:4000`
-4. Default credentials: `admin` / `admin` (change immediately!)
+4. On first startup, a default admin user is automatically created:
+   - Check the container logs for the generated password
+   - Default username: `admin` (configurable via `ADMIN_USERNAME`)
+   - Or set `ADMIN_PASSWORD_HASH` to use a pre-hashed password
 5. Configure download clients and indexers in the Admin section
 
 ## 📦 Usage
@@ -279,12 +282,30 @@ See [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) for advanced deployment topic
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LOCAL_AUTH_ENABLED` | Enable local username/password auth | `true` |
+| `ADMIN_USERNAME` | Default admin username (created on first startup) | `admin` |
+| `ADMIN_EMAIL` | Default admin email (created on first startup) | `admin@mydia.local` |
+| `ADMIN_PASSWORD_HASH` | Pre-hashed admin password (bcrypt). If not set, a random password is generated and logged | - |
 | `OIDC_ENABLED` | Enable OIDC/OpenID Connect auth | `false` |
 | `OIDC_DISCOVERY_DOCUMENT_URI` | OIDC discovery endpoint URL | - |
 | `OIDC_CLIENT_ID` | OIDC client ID | - |
 | `OIDC_CLIENT_SECRET` | OIDC client secret | - |
 | `OIDC_REDIRECT_URI` | OIDC callback URL | Auto-computed |
 | `OIDC_SCOPES` | Space-separated scope list | `openid profile email` |
+
+**Admin User Creation:**
+
+On first startup, if no admin user exists, Mydia automatically creates one:
+- **Random Password** (default): A secure random password is generated and displayed in the container logs
+- **Pre-set Password**: Use `ADMIN_PASSWORD_HASH` with a bcrypt hash for production deployments
+
+Generate a bcrypt hash:
+```bash
+# Using Elixir/Mix (if available)
+mix run -e "IO.puts Bcrypt.hash_pwd_salt(\"your_secure_password\")"
+
+# Using Python
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your_secure_password', bcrypt.gensalt()).decode())"
+```
 
 ### Download Clients
 
@@ -378,7 +399,8 @@ Configuration is loaded in this order (highest to lowest priority):
 ./dev mix ecto.migrate
 
 # View at http://localhost:4000
-# Login: admin / admin
+# Check logs for the auto-generated admin password:
+./dev logs | grep "DEFAULT ADMIN USER CREATED" -A 10
 ```
 
 See all commands with `./dev`

@@ -54,6 +54,7 @@ defmodule Mydia.Application do
       if Application.get_env(:mydia, :start_health_monitors, true) do
         ensure_default_quality_profiles()
         validate_library_paths()
+        Mydia.Accounts.DefaultAdmin.ensure_admin_exists()
       end
 
       {:ok, pid}
