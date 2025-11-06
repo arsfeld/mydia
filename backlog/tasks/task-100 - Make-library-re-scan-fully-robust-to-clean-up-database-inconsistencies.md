@@ -1,9 +1,10 @@
 ---
 id: task-100
 title: Make library re-scan fully robust to clean up database inconsistencies
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-06 04:43'
+updated_date: '2025-11-06 04:51'
 labels:
   - enhancement
   - library
@@ -46,12 +47,12 @@ The re-scan should be the "nuclear option" that users can trust to fix any datab
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Re-scan fixes orphaned TV show files by matching them to correct episodes
-- [ ] #2 Re-scan removes database entries for files that no longer exist on disk
-- [ ] #3 Re-scan updates file associations when season/episode info changes
-- [ ] #4 Re-scan is idempotent - running twice produces same result
-- [ ] #5 Re-scan reports summary of what was fixed/cleaned up
-- [ ] #6 Re-scan handles season packs correctly
-- [ ] #7 Re-scan handles multi-episode files correctly
-- [ ] #8 Re-scan validates all file paths and removes invalid entries
+- [x] #1 Re-scan fixes orphaned TV show files by matching them to correct episodes
+- [x] #2 Re-scan removes database entries for files that no longer exist on disk
+- [x] #3 Re-scan updates file associations when season/episode info changes
+- [x] #4 Re-scan is idempotent - running twice produces same result
+- [x] #5 Re-scan reports summary of what was fixed/cleaned up
+- [x] #6 Re-scan handles season packs correctly
+- [x] #7 Re-scan handles multi-episode files correctly
+- [x] #8 Re-scan validates all file paths and removes invalid entries
 <!-- AC:END -->

@@ -32,7 +32,6 @@ defmodule MydiaWeb.AdminStatusLive.Index do
     |> assign(:library_paths, Settings.list_library_paths())
     |> assign(:download_clients, Settings.list_download_client_configs())
     |> assign(:indexers, Settings.list_indexer_configs())
-    |> assign(:oban_stats, get_oban_stats())
     |> assign(:database_info, get_database_info())
     |> assign(:system_info, get_system_info())
   end
@@ -126,56 +125,6 @@ defmodule MydiaWeb.AdminStatusLive.Index do
 
   defp get_setting_source(env_var_name) do
     if System.get_env(env_var_name), do: :env, else: :default
-  end
-
-  defp get_oban_stats do
-    try do
-      # Check if Oban is running
-      if Process.whereis(Oban) do
-        config = Oban.config()
-
-        # Get stats for each configured queue
-        queues =
-          config.queues
-          |> Enum.map(fn {queue_name, _limit} ->
-            stats = Oban.check_queue(queue: queue_name)
-
-            %{
-              name: queue_name,
-              running: Map.get(stats, :running, 0),
-              available: Map.get(stats, :available, 0),
-              paused: Map.get(stats, :paused, false)
-            }
-          end)
-
-        # Calculate totals across all queues
-        running_jobs = Enum.sum(Enum.map(queues, & &1.running))
-        queued_jobs = Enum.sum(Enum.map(queues, & &1.available))
-
-        %{
-          running_jobs: running_jobs,
-          queued_jobs: queued_jobs,
-          queues: queues
-        }
-      else
-        # Oban is not running (e.g., in test environment)
-        %{
-          running_jobs: 0,
-          queued_jobs: 0,
-          queues: [],
-          error: "Oban not available"
-        }
-      end
-    rescue
-      e ->
-        # Handle any errors gracefully
-        %{
-          running_jobs: 0,
-          queued_jobs: 0,
-          queues: [],
-          error: "Error fetching Oban stats: #{inspect(e)}"
-        }
-    end
   end
 
   defp get_database_info do

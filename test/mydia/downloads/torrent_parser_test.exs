@@ -277,9 +277,7 @@ defmodule Mydia.Downloads.TorrentParserTest do
 
     test "handles Chinese torrent with numbered season marker" do
       {:ok, info} =
-        TorrentParser.parse(
-          "47BT.老友记.第6季.Friends.S06.1999.BluRay.2160p.10Bit.DV.HDR.HEVC.DDP5.1"
-        )
+        TorrentParser.parse("47BT.老友记.第6季.Friends.S06.1999.BluRay.2160p.10Bit.DV.HDR.HEVC.DDP5.1")
 
       assert info.type == :tv_season
       # "第6季" should be removed, leaving Chinese and English titles

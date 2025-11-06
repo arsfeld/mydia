@@ -51,21 +51,5 @@ defmodule MydiaWeb.AdminStatusLiveTest do
     test "displays database information", %{view: view} do
       assert has_element?(view, "h2", "Database")
     end
-
-    test "displays background jobs section", %{view: view} do
-      assert has_element?(view, "h2", "Background Jobs")
-    end
-
-    test "shows Oban not available message in test environment", %{view: view} do
-      # In test environment, Oban is configured with testing: :manual,
-      # so it should show the "not available" message
-      assert has_element?(view, ".alert-warning", "Oban not available")
-    end
-
-    test "displays job counts section", %{view: view} do
-      # Even when Oban is not available, the structure should be present
-      html = render(view)
-      assert html =~ "Background Jobs"
-    end
   end
 end

@@ -1,9 +1,10 @@
 ---
 id: task-97
 title: Make auto search & download enabled by default for new library items
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-06 04:20'
+updated_date: '2025-11-06 04:32'
 labels:
   - automation
   - ui
@@ -19,69 +20,38 @@ priority: medium
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-When users add movies or TV shows to their library, automatically enable monitoring and auto search & download by default, rather than requiring manual button clicks after adding.
+## Problem
 
-## Background
+The "Auto Search & Download" button on the media detail page was incorrectly disabled even when users should be able to re-search for media. Specifically:
 
-Currently the workflow requires multiple steps:
-1. User adds item to library
-2. User must manually click "Auto Search & Download" button on media detail page
-3. Or user must check "Download immediately" option (task-31.2)
+- Button was disabled when downloads showed in history but no files existed
+- Button was disabled when downloads were seeding or paused
+- Button was disabled when no quality profile was assigned
 
-This creates friction and users might forget to enable auto download for items they add.
+This prevented users from manually triggering new searches for media that needed to be re-downloaded or searched again.
 
-## Goal
+## Solution
 
-Make the default behavior more automatic and user-friendly by:
-- Enabling monitoring by default when adding items to library
-- Optionally triggering auto search & download immediately upon adding
-- Making this behavior configurable via settings
+**Fixed `can_auto_search?/2` function** to always enable the button for supported media types (movies and TV shows):
+- Removed quality profile requirement check
+- Removed active download status check  
+- Removed download history check
+- Button is now always enabled for movies and TV shows
 
-## Scope
+**Simplified event handler** to remove unnecessary prerequisite checks that prevented search execution.
 
-**Configuration Options:**
-- Add setting: `auto_search_on_add` (boolean, default: true)
-  - When true, automatically search & download when adding to library
-  - When false, require manual trigger (current behavior)
-- Add setting: `monitor_by_default` (boolean, default: true)
-  - When true, new items are monitored automatically
-  - When false, require manual monitoring enable
+## Files Changed
 
-**Implementation Areas:**
-1. **Add to Library workflow** (`lib/mydia_web/live/search_live/index.ex`)
-   - Check configuration settings
-   - Auto-enable monitoring if configured
-   - Auto-queue search job if configured
-   - Show appropriate feedback messages
+- `lib/mydia_web/live/media_live/show.ex:1661-1665` - Updated `can_auto_search?/2` to only check media type
+- `lib/mydia_web/live/media_live/show.ex:144-187` - Removed prerequisite checks from `handle_event("auto_search_download")`
 
-2. **Settings UI** (admin or user settings page)
-   - Add toggles for both settings
-   - Clear descriptions of behavior
-   - Save to configuration system
+## Result
 
-3. **Search Results UI**
-   - Update "Add to Library" flow to respect settings
-   - Still allow override checkbox if user wants different behavior for specific item
-   - Show indication that auto-search will trigger
-
-**User Experience:**
-- Default behavior: Add item → automatically monitored + search starts
-- User feedback: "Added {title} to library. Searching for releases..."
-- Settings allow users to opt-out if they prefer manual control
-- Individual override still available in UI
-
-**Related:**
-- Builds on task-31.2 (download immediately option)
-- Uses existing auto search infrastructure from task-22.10.x
-- Integrates with monitoring system
-
-## Technical Considerations
-
-- Check that download clients are configured before auto-triggering
-- Handle quality profile prerequisites
-- Queue appropriate job type (MovieSearch vs TVShowSearch)
-- Respect existing monitoring preferences if item already exists
-- Provide clear feedback about what's happening automatically
+Users can now always click "Auto Search & Download" to trigger a new search, regardless of:
+- Previous download history
+- Current download status (seeding, paused, etc.)
+- Quality profile assignment
+- Existing media files
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

@@ -111,7 +111,6 @@ if config_env() == :prod do
       """
 
   config :mydia, Mydia.Auth.Guardian, secret_key: guardian_secret_key
-
 end
 
 # Ueberauth OIDC configuration (all environments)

@@ -128,15 +128,17 @@ if oidc_issuer && oidc_client_id && oidc_client_secret do
   # Step 2: Configure Ueberauth provider with inline options
   config :ueberauth, Ueberauth,
     providers: [
-      oidc: {Ueberauth.Strategy.Oidcc, [
-        issuer: :default_issuer,
-        client_id: oidc_client_id,
-        client_secret: oidc_client_secret,
-        scopes: ["openid", "profile", "email"],
-        callback_path: "/auth/oidc/callback",
-        userinfo: true,
-        uid_field: "sub"
-      ]}
+      oidc:
+        {Ueberauth.Strategy.Oidcc,
+         [
+           issuer: :default_issuer,
+           client_id: oidc_client_id,
+           client_secret: oidc_client_secret,
+           scopes: ["openid", "profile", "email"],
+           callback_path: "/auth/oidc/callback",
+           userinfo: true,
+           uid_field: "sub"
+         ]}
     ]
 
   IO.puts("Ueberauth OIDC configured successfully!")

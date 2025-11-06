@@ -143,64 +143,46 @@ defmodule MydiaWeb.MediaLive.Show do
 
   def handle_event("auto_search_download", _params, socket) do
     media_item = socket.assigns.media_item
-    downloads_with_status = socket.assigns.downloads_with_status
 
-    # Check if auto search is possible
-    unless can_auto_search?(media_item, downloads_with_status) do
-      message =
-        cond do
-          is_nil(media_item.quality_profile_id) ->
-            "Cannot auto search: No quality profile assigned"
+    # Queue the background job based on media type
+    case media_item.type do
+      "movie" ->
+        # Queue MovieSearchJob for this specific movie
+        %{mode: "specific", media_item_id: media_item.id}
+        |> Mydia.Jobs.MovieSearch.new()
+        |> Oban.insert()
 
-          has_active_download?(downloads_with_status) ->
-            "Cannot auto search: Download already in progress"
+        Logger.info("Queued auto search for movie",
+          media_item_id: media_item.id,
+          title: media_item.title
+        )
 
-          true ->
-            "Cannot auto search: Prerequisites not met"
-        end
+        # Set a timeout to reset auto_searching state if no download is created
+        Process.send_after(self(), :auto_search_timeout, 30_000)
 
-      {:noreply, put_flash(socket, :error, message)}
-    else
-      # Queue the background job based on media type
-      case media_item.type do
-        "movie" ->
-          # Queue MovieSearchJob for this specific movie
-          %{mode: "specific", media_item_id: media_item.id}
-          |> Mydia.Jobs.MovieSearch.new()
-          |> Oban.insert()
+        {:noreply,
+         socket
+         |> assign(:auto_searching, true)
+         |> put_flash(:info, "Searching indexers for #{media_item.title}...")}
 
-          Logger.info("Queued auto search for movie",
-            media_item_id: media_item.id,
-            title: media_item.title
-          )
+      "tv_show" ->
+        # Queue TVShowSearchJob for all missing episodes
+        %{mode: "show", media_item_id: media_item.id}
+        |> Mydia.Jobs.TVShowSearch.new()
+        |> Oban.insert()
 
-          # Set a timeout to reset auto_searching state if no download is created
-          Process.send_after(self(), :auto_search_timeout, 30_000)
+        Logger.info("Queued auto search for TV show",
+          media_item_id: media_item.id,
+          title: media_item.title
+        )
 
-          {:noreply,
-           socket
-           |> assign(:auto_searching, true)
-           |> put_flash(:info, "Searching indexers for #{media_item.title}...")}
+        # Set a timeout to reset auto_searching state if no download is created
+        Process.send_after(self(), :auto_search_timeout, 30_000)
 
-        "tv_show" ->
-          # Queue TVShowSearchJob for all missing episodes
-          %{mode: "show", media_item_id: media_item.id}
-          |> Mydia.Jobs.TVShowSearch.new()
-          |> Oban.insert()
-
-          Logger.info("Queued auto search for TV show",
-            media_item_id: media_item.id,
-            title: media_item.title
-          )
-
-          # Set a timeout to reset auto_searching state if no download is created
-          Process.send_after(self(), :auto_search_timeout, 30_000)
-
-          {:noreply,
-           socket
-           |> assign(:auto_searching, true)
-           |> put_flash(:info, "Searching for all missing episodes of #{media_item.title}...")}
-      end
+        {:noreply,
+         socket
+         |> assign(:auto_searching, true)
+         |> put_flash(:info, "Searching for all missing episodes of #{media_item.title}...")}
     end
   end
 
@@ -1658,20 +1640,15 @@ defmodule MydiaWeb.MediaLive.Show do
 
   # Auto search helper functions
 
-  defp can_auto_search?(%Media.MediaItem{} = media_item, downloads_with_status) do
-    # Can auto search if:
-    # 1. Has a quality profile assigned
-    # 2. Is a supported media type (movie or tv_show)
-    # 3. No active downloads currently in progress
-    has_quality_profile = not is_nil(media_item.quality_profile_id)
-    is_supported_type = media_item.type in ["movie", "tv_show"]
-
-    has_quality_profile and is_supported_type and not has_active_download?(downloads_with_status)
+  defp can_auto_search?(%Media.MediaItem{} = media_item, _downloads_with_status) do
+    # Always allow auto search for supported media types
+    # Users should be able to re-search even if files exist or downloads are in history
+    media_item.type in ["movie", "tv_show"]
   end
 
   defp has_active_download?(downloads_with_status) do
     Enum.any?(downloads_with_status, fn d ->
-      d.status in ["downloading", "seeding", "checking", "paused"]
+      d.status in ["downloading", "checking"]
     end)
   end
 
