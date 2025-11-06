@@ -221,6 +221,30 @@
           </div>
         <% end %>
 
+        <%!-- Monitored toggle button (outside link, hidden in selection mode) --%>
+        <%= if not @selection_mode do %>
+          <button
+            type="button"
+            phx-click="toggle_item_monitored"
+            phx-value-id={item.id}
+            class={[
+              "absolute top-2 left-2 p-1 rounded-lg transition-all duration-200",
+              "hover:bg-base-200 hover:scale-110 active:scale-95",
+              "z-10"
+            ]}
+            title={if item.monitored, do: "Unmonitor", else: "Monitor"}
+          >
+            <.icon
+              name={if item.monitored, do: "hero-bookmark-solid", else: "hero-bookmark"}
+              class={
+                if item.monitored,
+                  do: "w-5 h-5 transition-colors duration-200 text-primary",
+                  else: "w-5 h-5 transition-colors duration-200 text-base-content opacity-60"
+              }
+            />
+          </button>
+        <% end %>
+
         <.link
           navigate={~p"/media/#{item.id}"}
           class="card bg-base-100 shadow-lg hover:shadow-xl transition-shadow duration-200 cursor-pointer block"
@@ -236,12 +260,6 @@
             <%= if quality = get_quality_badge(item) do %>
               <div class="badge badge-primary badge-sm absolute top-2 right-2">
                 {quality}
-              </div>
-            <% end %>
-            <%!-- Monitored indicator (hidden in selection mode) --%>
-            <%= if item.monitored and not @selection_mode do %>
-              <div class="absolute top-2 left-2">
-                <.icon name="hero-bookmark-solid" class="w-5 h-5 text-primary" />
               </div>
             <% end %>
           </figure>

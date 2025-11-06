@@ -78,18 +78,18 @@ defmodule Mydia.Indexers.QualityParser do
     {"AV1", ~r/av1/i}
   ]
 
-  # Audio codec patterns
+  # Audio codec patterns (order matters - more specific patterns first)
   @audio_codecs [
+    {"Atmos", ~r/atmos/i},
     {"TrueHD", ~r/truehd/i},
     {"DTS-HD", ~r/dts[\-\s]?hd/i},
     {"DTS", ~r/dts/i},
-    {"AC3", ~r/ac3|dd/i},
+    {"AC3", ~r/ac3|dd(?!p)/i},
     {"AAC", ~r/aac/i},
     {"MP3", ~r/mp3/i},
     {"FLAC", ~r/flac/i},
     {"Opus", ~r/opus/i},
-    {"Vorbis", ~r/vorbis/i},
-    {"Atmos", ~r/atmos/i}
+    {"Vorbis", ~r/vorbis/i}
   ]
 
   @doc """
@@ -311,7 +311,7 @@ defmodule Mydia.Indexers.QualityParser do
   defp resolution_score("360p"), do: 200
   defp resolution_score(_), do: 0
 
-  defp source_score("BluRay"), do: 500
+  defp source_score("BluRay"), do: 450
   defp source_score("WEB-DL"), do: 400
   defp source_score("WEBRip"), do: 350
   defp source_score("HDTV"), do: 300

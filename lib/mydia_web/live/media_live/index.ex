@@ -212,6 +212,31 @@ defmodule MydiaWeb.MediaLive.Index do
     end
   end
 
+  def handle_event("toggle_item_monitored", %{"id" => id}, socket) do
+    media_item = Media.get_media_item!(id)
+    new_monitored_status = !media_item.monitored
+
+    case Media.update_media_item(media_item, %{monitored: new_monitored_status}) do
+      {:ok, _updated_item} ->
+        # Refetch with proper preloads to match the stream items
+        updated_item_with_preloads =
+          Media.get_media_item!(id,
+            preload: [:media_files, :downloads, episodes: [:media_files, :downloads]]
+          )
+
+        {:noreply,
+         socket
+         |> stream_insert(:media_items, updated_item_with_preloads)
+         |> put_flash(
+           :info,
+           "Monitoring #{if new_monitored_status, do: "enabled", else: "disabled"}"
+         )}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update monitoring status")}
+    end
+  end
+
   def handle_event("batch_download", _params, socket) do
     # TODO: Implement download functionality
     # For now, just show a placeholder message

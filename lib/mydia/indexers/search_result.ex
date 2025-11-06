@@ -169,12 +169,16 @@ defmodule Mydia.Indexers.SearchResult do
   def quality_description(%__MODULE__{quality: nil}), do: "Unknown"
 
   def quality_description(%__MODULE__{quality: quality}) do
-    # Build a concise quality badge focusing on the most important attributes
+    # Build a concise quality badge including all quality attributes
     parts =
       [
         quality.resolution,
         quality.source,
-        quality.hdr && "HDR"
+        quality.codec,
+        quality.audio,
+        quality.hdr && "HDR",
+        quality.proper && "PROPER",
+        quality.repack && "REPACK"
       ]
       |> Enum.filter(& &1)
 
