@@ -2,12 +2,75 @@ defmodule Mydia.Downloads.TorrentMatcher do
   @moduledoc """
   Matches parsed torrent information against library items.
 
-  Uses a multi-layered matching approach:
-  1. ID-based matching (TMDB/IMDB IDs) - highest priority and confidence
-  2. Fuzzy string matching with year validation - fallback when IDs unavailable
+  ## Multi-Layered Matching Approach
 
-  ID-based matching provides the most reliable results and prevents false positives
-  from similar titles (sequels, prequels, etc.).
+  The matcher uses a sophisticated, multi-layered approach to prevent incorrect matches
+  while maintaining high accuracy:
+
+  ### 1. Release Validation (Pre-filtering)
+  Before matching begins, releases are validated to reject:
+  - Hashed/obfuscated release names
+  - Password-protected releases
+  - Invalid naming patterns
+
+  ### 2. ID-Based Matching (Primary - 98% confidence)
+  When TMDB or IMDB IDs are available from indexer responses:
+  - Matches directly against library item IDs
+  - Provides highest confidence (0.98)
+  - Prevents false positives from similar titles
+  - Takes priority over all title-based matching
+
+  ### 3. Title-Based Matching (Fallback)
+  When ID matching is unavailable, uses sophisticated title comparison:
+
+  #### Title Variants
+  - Checks primary title, original title, and alternative/AKA titles from TMDB
+  - Applies small penalty (-0.05) for alternative title matches to prefer primary
+
+  #### String Similarity
+  - Uses Jaro-Winkler distance algorithm for fuzzy matching
+  - Normalizes titles: lowercase, removes articles (the/a/an), handles Unicode
+  - Detects word boundary issues (e.g., "Alien" vs "Aliens")
+
+  #### Sequel Detection
+  - Identifies sequel markers: roman numerals, "Part X", "Returns", "Reloaded", etc.
+  - Applies penalties (-0.4) when one title has sequel markers but not the other
+
+  #### Year Validation (Critical for Movies)
+  - Exact year match: +0.3 confidence boost
+  - Within 1 year: +0.15 boost (accounts for different release dates)
+  - >1 year difference: -0.5 penalty (prevents sequels/prequels)
+
+  ### 4. Edition Detection
+  The parser extracts edition information from release names:
+  - Director's Cut, Extended Edition, Theatrical, Ultimate Edition
+  - Collector's Edition, Special Edition, Unrated, Remastered, IMAX
+  - Edition info is informational and doesn't affect matching logic
+
+  ## Confidence Scoring
+
+  Movies: `(title_similarity * 0.7) + year_match + penalties`
+  - Title similarity: 70% weight
+  - Year validation: 30% weight
+  - Penalties: sequel markers, word boundaries, alternative titles
+  - Final score clamped to [0.0, 1.0]
+  - Default threshold: 0.8
+
+  TV Shows: Primarily title-based (no year weighting)
+
+  ## Testing
+
+  The matcher has comprehensive test coverage:
+  - 53 torrent matcher tests (general)
+  - 10 alternative title tests
+  - 18 enhanced normalization tests
+  - 24 edition detection tests
+  - Total: 100+ tests ensuring accuracy and preventing regressions
+
+  ID-based matching prevents issues like:
+  - "The Matrix" (1999) matching "The Matrix Reloaded" (2003)
+  - "Alien" (1979) matching "Aliens" (1986)
+  - Similar-sounding movies from different years
   """
 
   alias Mydia.Media
@@ -121,24 +184,73 @@ defmodule Mydia.Downloads.TorrentMatcher do
   end
 
   defp calculate_movie_confidence(movie, torrent_info) do
-    # Start with title similarity
-    title_similarity =
-      string_similarity(normalize_string(movie.title), normalize_string(torrent_info.title))
+    # Get all title variants (primary, original, and alternative titles)
+    title_variants = get_title_variants(movie)
+
+    # Calculate similarity for all title variants and take the best match
+    {best_title, title_similarity, is_alternative} =
+      title_variants
+      |> Enum.map(fn {title, is_alt} ->
+        similarity = string_similarity(normalize_string(title), normalize_string(torrent_info.title))
+        {title, similarity, is_alt}
+      end)
+      |> Enum.max_by(fn {_title, similarity, _is_alt} -> similarity end)
+
+    # Apply small penalty for alternative title matches to prefer primary titles
+    alt_title_penalty = if is_alternative, do: -0.05, else: 0.0
+
+    # Check for word boundary issues (e.g., "Alien" vs "Aliens")
+    word_boundary_penalty =
+      if word_boundary_substring?(best_title, torrent_info.title) do
+        -0.5
+      else
+        0.0
+      end
+
+    # Check for sequel marker mismatches
+    # If one has a sequel marker but the other doesn't, likely a sequel/prequel mismatch
+    sequel_penalty =
+      cond do
+        # Both have sequel markers or neither has them - no penalty
+        has_sequel_marker?(best_title) == has_sequel_marker?(torrent_info.title) ->
+          0.0
+
+        # One has a sequel marker but the other doesn't - likely a different movie
+        # Only penalize if titles are somewhat similar (>0.7)
+        title_similarity > 0.7 ->
+          -0.4
+
+        # Titles are different enough that sequel markers don't matter
+        true ->
+          0.0
+      end
 
     # Year matching is critical for movies
+    year_diff = if movie.year && torrent_info.year, do: abs(movie.year - torrent_info.year), else: nil
+
     year_match =
       cond do
         # Exact year match - high boost
-        movie.year == torrent_info.year -> 0.3
+        movie.year == torrent_info.year ->
+          0.3
+
         # Within 1 year (sometimes release dates differ)
-        movie.year && abs(movie.year - torrent_info.year) <= 1 -> 0.15
-        # No year match
-        true -> -0.2
+        year_diff && year_diff <= 1 ->
+          0.15
+
+        # Year difference >1 - significant penalty to prevent sequels
+        # The larger the difference, the more likely it's a sequel/prequel
+        year_diff && year_diff > 1 ->
+          -0.5
+
+        # No year available - cannot validate, small penalty
+        true ->
+          -0.1
       end
 
     # Calculate final confidence (weighted average)
-    # Title is 70% weight, year is 30% weight (added as boost)
-    confidence = title_similarity * 0.7 + year_match
+    # Title is 70% weight, year is 30% weight (added as boost/penalty)
+    confidence = title_similarity * 0.7 + year_match + sequel_penalty + word_boundary_penalty + alt_title_penalty
 
     # Clamp between 0 and 1
     max(0.0, min(1.0, confidence))
@@ -383,6 +495,37 @@ defmodule Mydia.Downloads.TorrentMatcher do
     end
   end
 
+  ## Private Functions - Title Variants
+
+  # Get all title variants for a media item (primary, original, and alternative titles)
+  # Returns a list of {title, is_alternative} tuples
+  defp get_title_variants(media_item) do
+    primary_titles =
+      [
+        {media_item.title, false},
+        # Include original title if different from primary
+        if(media_item.original_title && media_item.original_title != media_item.title,
+          do: {media_item.original_title, false},
+          else: nil
+        )
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    # Get alternative titles from metadata
+    alternative_titles =
+      case media_item.metadata do
+        %{"alternative_titles" => alt_titles} when is_list(alt_titles) ->
+          Enum.map(alt_titles, fn title -> {title, true} end)
+
+        _ ->
+          []
+      end
+
+    # Combine primary and alternative titles, ensuring uniqueness
+    (primary_titles ++ alternative_titles)
+    |> Enum.uniq_by(fn {title, _} -> normalize_string(title) end)
+  end
+
   ## Private Functions - String Similarity
 
   defp string_similarity(str1, str2) do
@@ -391,9 +534,70 @@ defmodule Mydia.Downloads.TorrentMatcher do
     jaro_winkler_distance(str1, str2)
   end
 
+  # Detects sequel/suffix markers in titles
+  # Returns true if the title contains sequel markers like: II, 2, Part 2, Reloaded, etc.
+  defp has_sequel_marker?(str) do
+    normalized = String.downcase(str)
+
+    sequel_patterns = [
+      ~r/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/,
+      # Roman numerals
+      ~r/\b(part|chapter|episode|volume)\s*\d+\b/,
+      # Part 2, Chapter 3, etc.
+      ~r/\b\d{1,2}\b/,
+      # Just numbers: "2", "3", etc.
+      ~r/\b(reloaded|revolutions|returns|resurrection|rises|begins|origins)\b/,
+      # Common sequel words
+      ~r/\b(revenge|redemption|reckoning|reborn|awakening|legacy)\b/,
+      # More sequel words
+      ~r/\b(quest|journey|chronicles|saga)\b/
+      # Series indicators
+    ]
+
+    Enum.any?(sequel_patterns, fn pattern ->
+      Regex.match?(pattern, normalized)
+    end)
+  end
+
+  # Checks if one string is a word-boundary substring of another
+  # Returns true specifically for cases like "alien" vs "aliens" (singular/plural)
+  # where one is just the other with an 's' added
+  defp word_boundary_substring?(str1, str2) do
+    # Normalize both strings (remove articles, special chars) for comparison
+    n1 = normalize_string(str1)
+    n2 = normalize_string(str2)
+
+    cond do
+      # Exact match - not a substring issue
+      n1 == n2 ->
+        false
+
+      # Check if n1 ends with 's' and n2 is the singular form (e.g., "aliens" vs "alien")
+      # Only penalize if they are very similar otherwise (to avoid false positives)
+      String.ends_with?(n1, "s") and String.slice(n1, 0..-2//1) == n2 ->
+        # Double-check: both should be short (single word titles)
+        # to avoid penalizing "Dr. Strangelove" vs "Dr. Strangelove or: ..."
+        word_count_1 = length(String.split(n1, " ", trim: true))
+        word_count_2 = length(String.split(n2, " ", trim: true))
+        word_count_1 <= 2 and word_count_2 <= 2
+
+      # Check if n2 ends with 's' and n1 is the singular form
+      String.ends_with?(n2, "s") and String.slice(n2, 0..-2//1) == n1 ->
+        word_count_1 = length(String.split(n1, " ", trim: true))
+        word_count_2 = length(String.split(n2, " ", trim: true))
+        word_count_1 <= 2 and word_count_2 <= 2
+
+      # Not a singular/plural issue
+      true ->
+        false
+    end
+  end
+
   defp normalize_string(str) do
     str
     |> String.downcase()
+    # Normalize Unicode characters (accents, umlauts)
+    |> normalize_unicode()
     # Remove common words that might cause issues
     |> String.replace(~r/\b(the|a|an)\b/, "")
     # Remove special characters
@@ -401,6 +605,25 @@ defmodule Mydia.Downloads.TorrentMatcher do
     # Normalize whitespace
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
+  end
+
+  # Normalize Unicode characters: accents, umlauts, etc.
+  defp normalize_unicode(str) do
+    str
+    # German umlauts
+    |> String.replace("ä", "ae")
+    |> String.replace("ö", "oe")
+    |> String.replace("ü", "ue")
+    |> String.replace("ß", "ss")
+    # Common accented characters - decompose to base ASCII
+    |> String.replace(~r/[àáâãäå]/u, "a")
+    |> String.replace(~r/[èéêë]/u, "e")
+    |> String.replace(~r/[ìíîï]/u, "i")
+    |> String.replace(~r/[òóôõö]/u, "o")
+    |> String.replace(~r/[ùúûü]/u, "u")
+    |> String.replace(~r/[ýÿ]/u, "y")
+    |> String.replace(~r/[ñ]/u, "n")
+    |> String.replace(~r/[ç]/u, "c")
   end
 
   # Jaro-Winkler distance implementation

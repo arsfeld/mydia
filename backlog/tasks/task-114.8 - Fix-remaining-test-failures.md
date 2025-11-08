@@ -4,7 +4,7 @@ title: Fix remaining test failures
 status: To Do
 assignee: []
 created_date: '2025-11-08 02:06'
-updated_date: '2025-11-08 02:17'
+updated_date: '2025-11-08 03:27'
 labels:
   - testing
   - bug-fix
@@ -78,4 +78,23 @@ Most remaining failures appear to be in:
 - Some database connection issues in async tests
 
 These failures are not directly related to task 114's REMUX and TRaSH Guides features.
+
+## Progress Update
+
+### Hooks Executor Fix (25 tests fixed!)
+- **Issue**: `Config.Schema.fetch/2` undefined function error
+- **Root Cause**: Code was trying to access Config.Schema struct (from Ecto) as a map
+- **Fix**: Added proper pattern matching for struct type and used struct field access
+- **Result**: Test failures reduced from 66 → 41
+- **Commit**: fa558d2
+
+### Remaining 41 Failures
+Categories:
+1. ID-based torrent matching tests (new feature tests - may need implementation)
+2. Download/client integration tests (some flaky/external service dependencies)
+3. SQLite database busy errors (concurrency issues)
+4. HTTP test failures (headers access returning nil)
+5. Timeout errors in TV show search tests
+
+Next: Analyze the 41 remaining failures and categorize them by fix priority.
 <!-- SECTION:NOTES:END -->

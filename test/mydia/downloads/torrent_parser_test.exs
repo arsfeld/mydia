@@ -122,7 +122,8 @@ defmodule Mydia.Downloads.TorrentParserTest do
     end
 
     test "returns error for empty string" do
-      assert {:error, :unable_to_parse} = TorrentParser.parse("")
+      # Empty string is now rejected by validation before parsing
+      assert {:error, :no_meaningful_content} = TorrentParser.parse("")
     end
   end
 

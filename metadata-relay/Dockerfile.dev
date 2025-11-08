@@ -1,0 +1,26 @@
+FROM elixir:1.16-alpine
+
+# Install development dependencies
+RUN apk add --no-cache build-base git inotify-tools
+
+WORKDIR /app
+
+# Install hex and rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy mix files for dependency installation
+COPY mix.exs mix.lock ./
+RUN mix deps.get
+
+# Copy application files
+COPY . .
+
+# Compile dependencies
+RUN mix deps.compile
+
+# Expose the port
+EXPOSE 4001
+
+# Run the application in development mode
+CMD ["mix", "run", "--no-halt"]

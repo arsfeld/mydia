@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "4001:4001"
+    environment:
+      - PORT=4001
+      - MIX_ENV=dev
+      - TMDB_API_KEY=${TMDB_API_KEY:-your_api_key_here}
+    volumes:
+      # Mount source code for live reloading
+      - .:/app
+      # Preserve build artifacts and dependencies
+      - relay_build:/app/_build
+      - relay_deps:/app/deps
+    command: mix run --no-halt
+
+volumes:
+  relay_build:
+  relay_deps:

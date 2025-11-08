@@ -119,7 +119,8 @@ defmodule Mydia.Metadata.Provider do
         ],
         crew: [
           %{name: "Lana Wachowski", job: "Director", department: "Directing"}
-        ]
+        ],
+        alternative_titles: ["The Matrix Reloaded", "Matrix"]
       }
 
   ## Images Structure
@@ -222,7 +223,8 @@ defmodule Mydia.Metadata.Provider do
           spoken_languages: [String.t()],
           homepage: String.t() | nil,
           cast: [cast_member()],
-          crew: [crew_member()]
+          crew: [crew_member()],
+          alternative_titles: [String.t()]
         }
 
   @type cast_member :: %{

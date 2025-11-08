@@ -122,7 +122,7 @@ defmodule Mydia.Metadata.Provider.Relay do
   def fetch_by_id(config, provider_id, opts \\ []) do
     media_type = Keyword.get(opts, :media_type, :movie)
     language = Keyword.get(opts, :language, @default_language)
-    append = Keyword.get(opts, :append_to_response, ["credits"])
+    append = Keyword.get(opts, :append_to_response, ["credits", "alternative_titles"])
 
     endpoint = build_details_endpoint(media_type, provider_id)
 
@@ -323,7 +323,8 @@ defmodule Mydia.Metadata.Provider.Relay do
       spoken_languages: parse_language_codes(data["spoken_languages"]),
       homepage: data["homepage"],
       cast: parse_cast(data["credits"]["cast"]),
-      crew: parse_crew(data["credits"]["crew"])
+      crew: parse_crew(data["credits"]["crew"]),
+      alternative_titles: parse_alternative_titles(data["alternative_titles"])
     }
 
     case media_type do
@@ -522,4 +523,16 @@ defmodule Mydia.Metadata.Provider.Relay do
   end
 
   defp parse_crew(_), do: []
+
+  defp parse_alternative_titles(nil), do: []
+
+  defp parse_alternative_titles(%{"titles" => titles}) when is_list(titles) do
+    # Extract just the title strings, filtering out duplicates
+    titles
+    |> Enum.map(& &1["title"])
+    |> Enum.filter(&is_binary/1)
+    |> Enum.uniq()
+  end
+
+  defp parse_alternative_titles(_), do: []
 end

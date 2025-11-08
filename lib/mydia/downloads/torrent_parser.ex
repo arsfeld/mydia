@@ -2,6 +2,17 @@ defmodule Mydia.Downloads.TorrentParser do
   @moduledoc """
   Parses torrent names to extract structured media information.
 
+  Includes pre-validation to reject invalid/fake releases before parsing.
+
+  ## Parsing Process
+
+  1. **Validation**: Check for known bad patterns (hashed releases, password-protected, etc.)
+  2. **Cleaning**: Remove tracker prefixes and normalize the name
+  3. **Type Detection**: Determine if movie, TV episode, or season pack
+  4. **Extraction**: Parse title, year, quality, source, codec, and release group
+
+  ## Supported Formats
+
   Handles common torrent naming patterns for movies and TV shows to extract:
   - Title
   - Year (for movies)
@@ -9,6 +20,7 @@ defmodule Mydia.Downloads.TorrentParser do
   - Season packs (full seasons without episode numbers)
   - Quality/resolution
   - Release group
+  - Edition (Director's Cut, Extended Edition, etc. - for movies)
 
   Supports complex torrent names with:
   - Website/tracker prefixes (e.g., [bitsearch.to], 【高清剧集网】)
@@ -55,12 +67,38 @@ defmodule Mydia.Downloads.TorrentParser do
       }}
   """
 
+  alias Mydia.Downloads.ReleaseValidator
+
   @doc """
   Parses a torrent name and returns structured information.
 
+  First validates the release name to reject known bad patterns,
+  then attempts to parse the type and extract metadata.
+
   Returns `{:ok, info_map}` on success, or `{:error, reason}` if parsing fails.
+
+  ## Error Reasons
+
+  - `:hashed_release` - Contains obfuscated hex string
+  - `:numeric_only_title` - Title has no meaningful text
+  - `:password_protected` - Requires password
+  - `:reversed_pattern` - Non-standard naming pattern
+  - `:yenc_pattern` - Raw usenet binary encoding
+  - `:no_meaningful_content` - No extractable title
+  - `:unable_to_parse` - Doesn't match known formats
   """
   def parse(name) when is_binary(name) do
+    # Validate release name before parsing
+    case ReleaseValidator.validate_release(name) do
+      {:ok, valid_name} ->
+        parse_validated_release(valid_name)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_validated_release(name) do
     name = clean_name(name)
 
     cond do
@@ -200,7 +238,8 @@ defmodule Mydia.Downloads.TorrentParser do
           quality: extract_quality(remaining),
           source: extract_source(remaining),
           codec: extract_codec(remaining),
-          release_group: extract_release_group(remaining)
+          release_group: extract_release_group(remaining),
+          edition: extract_edition(remaining)
         }
     end
   end
@@ -317,6 +356,52 @@ defmodule Mydia.Downloads.TorrentParser do
     case Regex.run(~r/[-\[]([A-Z0-9]+)[\]\s]*$/i, text) do
       [_, group] -> group
       _ -> nil
+    end
+  end
+
+  defp extract_edition(text) do
+    # Detect various edition types
+    # Order matters - check more specific patterns first
+    cond do
+      # Director's Cut variants
+      Regex.match?(~r/Director'?s?.?(Cut|Edition)/i, text) ->
+        "Director's Cut"
+
+      # Extended variants
+      Regex.match?(~r/Extended.?(Cut|Edition|Version)/i, text) ->
+        "Extended Edition"
+
+      # Theatrical variants
+      Regex.match?(~r/Theatrical.?(Cut|Release|Edition|Version)/i, text) ->
+        "Theatrical"
+
+      # Ultimate Edition
+      Regex.match?(~r/Ultimate.?(Edition|Cut)/i, text) ->
+        "Ultimate Edition"
+
+      # Collector's Edition
+      Regex.match?(~r/Collector'?s?.?Edition/i, text) ->
+        "Collector's Edition"
+
+      # Special Edition
+      Regex.match?(~r/Special.?Edition/i, text) ->
+        "Special Edition"
+
+      # Unrated
+      Regex.match?(~r/\bUnrated\b/i, text) ->
+        "Unrated"
+
+      # Remastered
+      Regex.match?(~r/\bRemastered\b/i, text) ->
+        "Remastered"
+
+      # IMAX Edition
+      Regex.match?(~r/\bIMAX\b/i, text) ->
+        "IMAX"
+
+      # No edition detected
+      true ->
+        nil
     end
   end
 end

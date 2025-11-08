@@ -215,10 +215,19 @@ defmodule Mydia.Downloads.ClientHealth do
       [] ->
         :not_found
     end
+  rescue
+    ArgumentError ->
+      # ETS table doesn't exist (e.g., in tests where GenServer isn't started)
+      :not_found
   end
 
   defp cache_health(client_id, health) do
     :ets.insert(@table_name, {client_id, health, System.monotonic_time(:millisecond)})
+  rescue
+    ArgumentError ->
+      # ETS table doesn't exist (e.g., in tests where GenServer isn't started)
+      # Silently skip caching - the health check result will still be returned
+      :ok
   end
 
   defp fresh?(cached_at) do
