@@ -70,6 +70,7 @@ RUN apk add --no-cache \
     curl \
     ca-certificates \
     ffmpeg \
+    fdk-aac \
     su-exec \
     tzdata \
     shadow
