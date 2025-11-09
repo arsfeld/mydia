@@ -58,9 +58,17 @@ defmodule Mydia.Hooks.Executor do
   Execute hooks asynchronously (fire and forget).
   """
   def execute_async(event, data, opts \\ []) do
-    Task.Supervisor.start_child(Mydia.TaskSupervisor, fn ->
+    repo_config = Mydia.Repo.config()
+
+    if repo_config[:pool] == Ecto.Adapters.SQL.Sandbox do
+      # In test environment with sandbox, run synchronously to avoid connection issues
       execute_sync(event, data, opts)
-    end)
+    else
+      # In production, run asynchronously
+      Task.Supervisor.start_child(Mydia.TaskSupervisor, fn ->
+        execute_sync(event, data, opts)
+      end)
+    end
 
     :ok
   end

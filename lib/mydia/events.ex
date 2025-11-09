@@ -57,7 +57,10 @@ defmodule Mydia.Events do
       :ok
   """
   def create_event_async(attrs) do
-    Task.Supervisor.start_child(Mydia.TaskSupervisor, fn ->
+    repo_config = Mydia.Repo.config()
+
+    if repo_config[:pool] == Ecto.Adapters.SQL.Sandbox do
+      # In test environment with sandbox, run synchronously to avoid connection issues
       case create_event(attrs) do
         {:ok, event} ->
           Logger.debug("Event created asynchronously: #{event.type}")
@@ -65,7 +68,18 @@ defmodule Mydia.Events do
         {:error, changeset} ->
           Logger.error("Failed to create event asynchronously: #{inspect(changeset.errors)}")
       end
-    end)
+    else
+      # In production, run asynchronously
+      Task.Supervisor.start_child(Mydia.TaskSupervisor, fn ->
+        case create_event(attrs) do
+          {:ok, event} ->
+            Logger.debug("Event created asynchronously: #{event.type}")
+
+          {:error, changeset} ->
+            Logger.error("Failed to create event asynchronously: #{inspect(changeset.errors)}")
+        end
+      end)
+    end
 
     :ok
   end

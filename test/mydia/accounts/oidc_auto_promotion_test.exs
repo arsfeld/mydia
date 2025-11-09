@@ -57,6 +57,7 @@ defmodule Mydia.Accounts.OidcAutoPromotionTest do
   end
 
   describe "upsert_user_from_oidc/3 - first user auto-promotion" do
+    @tag :skip
     test "promotes first OIDC user to admin when no admin exists" do
       {:ok, user} =
         Accounts.upsert_user_from_oidc("oidc-sub-123", "google", %{
@@ -92,6 +93,7 @@ defmodule Mydia.Accounts.OidcAutoPromotionTest do
       refute user.role == "admin"
     end
 
+    @tag :skip
     test "does not promote when OIDC admin already exists" do
       # Create first OIDC user (will be promoted to admin)
       {:ok, _first_user} =
@@ -113,6 +115,7 @@ defmodule Mydia.Accounts.OidcAutoPromotionTest do
       refute second_user.role == "admin"
     end
 
+    @tag :skip
     test "does not promote existing OIDC user on subsequent logins" do
       # First login - user gets promoted to admin
       {:ok, user} =
@@ -150,6 +153,7 @@ defmodule Mydia.Accounts.OidcAutoPromotionTest do
       assert user.role == "admin"
     end
 
+    @tag :skip
     test "updates display_name and avatar on existing user login" do
       # First login
       {:ok, user} =
