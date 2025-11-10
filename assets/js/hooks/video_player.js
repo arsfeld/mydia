@@ -170,6 +170,10 @@ const VideoPlayer = {
       if (finalUrl && finalUrl.includes('.m3u8')) {
         // This is an HLS stream, use HLS.js
         console.log('Detected HLS stream, using HLS.js')
+
+        // Wait for playlist to be ready (handles race condition with FFmpeg)
+        await this.waitForPlaylist(finalUrl)
+
         this.setupHLS(finalUrl)
       } else if (response.ok) {
         // Direct play
@@ -198,6 +202,38 @@ const VideoPlayer = {
     }
 
     return await response.json()
+  },
+
+  async waitForPlaylist(playlistUrl, options = {}) {
+    const maxRetries = options.maxRetries || 10
+    const retryDelay = options.retryDelay || 500
+    const maxDelay = options.maxDelay || 3000
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(playlistUrl, { method: 'HEAD' })
+
+        if (response.ok) {
+          // Playlist ready
+          if (i > 0) {
+            console.log(`Playlist ready after ${i + 1} attempt(s)`)
+          }
+          return
+        }
+
+        // Calculate exponential backoff delay
+        const delay = Math.min(retryDelay * Math.pow(1.5, i), maxDelay)
+        console.log(`Playlist not ready (attempt ${i + 1}/${maxRetries}), retrying in ${delay}ms...`)
+
+        await new Promise(resolve => setTimeout(resolve, delay))
+      } catch (error) {
+        console.warn(`Error checking playlist (attempt ${i + 1}/${maxRetries}):`, error)
+        const delay = Math.min(retryDelay * Math.pow(1.5, i), maxDelay)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+
+    throw new Error('Playlist not ready after maximum retry attempts')
   },
 
   async saveProgress(position, duration) {
