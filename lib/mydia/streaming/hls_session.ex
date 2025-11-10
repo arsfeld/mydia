@@ -24,7 +24,7 @@ defmodule Mydia.Streaming.HlsSession do
   2. Creates unique session directory in /tmp
   3. Starts transcoding backend (FFmpeg or Membrane)
   4. Tracks activity via heartbeat messages
-  5. Auto-terminates after 30 minutes of inactivity
+  5. Auto-terminates after 10 minutes of inactivity
   6. Cleans up temp files on termination
 
   ## Usage
@@ -46,11 +46,11 @@ defmodule Mydia.Streaming.HlsSession do
   alias Mydia.Streaming.{HlsPipeline, FfmpegHlsTranscoder}
 
   # Get session timeout and temp dir from config or use defaults
-  # Default timeout is 2 minutes - sessions are kept alive via heartbeats during active playback
+  # Default timeout is 10 minutes - sessions are kept alive via heartbeats during active playback
   @session_timeout Application.compile_env(
                      :mydia,
                      [:streaming, :session_timeout],
-                     :timer.minutes(2)
+                     :timer.minutes(10)
                    )
   @temp_base_dir Application.compile_env(:mydia, [:streaming, :temp_base_dir], "/tmp/mydia-hls")
 
