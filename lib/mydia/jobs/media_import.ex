@@ -164,16 +164,8 @@ defmodule Mydia.Jobs.MediaImport do
     if File.exists?(path) do
       if File.dir?(path) do
         # It's a directory, list all files recursively
-        files =
-          Path.wildcard(Path.join(path, "**/*"))
-          |> Enum.filter(&File.regular?/1)
-          |> Enum.map(fn file_path ->
-            %{
-              path: file_path,
-              name: Path.basename(file_path),
-              size: File.stat!(file_path).size
-            }
-          end)
+        # Using File.ls! instead of Path.wildcard to handle Unicode paths correctly
+        files = list_files_recursive(path)
 
         {:ok, files}
       else
@@ -189,6 +181,38 @@ defmodule Mydia.Jobs.MediaImport do
     else
       Logger.warning("Download path does not exist", path: path)
       {:ok, []}
+    end
+  end
+
+  defp list_files_recursive(dir) do
+    try do
+      File.ls!(dir)
+      |> Enum.flat_map(fn entry ->
+        full_path = Path.join(dir, entry)
+
+        cond do
+          File.regular?(full_path) ->
+            [%{
+              path: full_path,
+              name: Path.basename(full_path),
+              size: File.stat!(full_path).size
+            }]
+
+          File.dir?(full_path) ->
+            list_files_recursive(full_path)
+
+          true ->
+            []
+        end
+      end)
+    rescue
+      e ->
+        Logger.warning("Error listing files in directory",
+          path: dir,
+          error: Exception.message(e)
+        )
+
+        []
     end
   end
 
