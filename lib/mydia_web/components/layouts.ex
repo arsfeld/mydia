@@ -230,7 +230,7 @@ defmodule MydiaWeb.Layouts do
                   </a>
                 </li>
                 <li class="mt-2 border-t border-base-300 pt-2">
-                  <a href="/logout" class="text-error">
+                  <a href="/auth/logout" class="text-error">
                     <.icon name="hero-arrow-right-on-rectangle" class="w-4 h-4" /> Logout
                   </a>
                 </li>

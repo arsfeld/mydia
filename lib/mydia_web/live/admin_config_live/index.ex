@@ -397,13 +397,12 @@ defmodule MydiaWeb.AdminConfigLive.Index do
       type: String.to_atom(client.type),
       host: client.host,
       port: client.port,
+      use_ssl: client.use_ssl,
       username: client.username,
       password: client.password,
-      use_ssl: client.use_ssl,
-      options: %{
-        timeout: 10_000,
-        connect_timeout: 5_000
-      }
+      api_key: client.api_key,
+      url_base: client.url_base,
+      options: client.connection_settings || %{}
     }
 
     # Get the adapter and test connection
@@ -812,6 +811,14 @@ defmodule MydiaWeb.AdminConfigLive.Index do
 
   defp get_all_settings_with_sources do
     config = Settings.get_runtime_config()
+
+    # In test environments, config might be a simple map. Use defaults if needed.
+    config =
+      if is_struct(config) do
+        config
+      else
+        Mydia.Config.Schema.defaults()
+      end
 
     # Group settings by category with their sources
     %{

@@ -147,6 +147,12 @@ defmodule MydiaWeb.SearchLive.Index do
         Map.get(socket.assigns.search_results_map, download_url)
       end
 
+    if search_result do
+      Logger.info(
+        "Retrieved search_result from map, download_protocol: #{inspect(search_result.download_protocol)}"
+      )
+    end
+
     # Start async task to add media to library
     {:noreply,
      socket
@@ -389,7 +395,13 @@ defmodule MydiaWeb.SearchLive.Index do
     # Store results in a map for quick lookup by download_url
     results_map =
       results
-      |> Enum.map(fn result -> {result.download_url, result} end)
+      |> Enum.map(fn result ->
+        Logger.info(
+          "Storing result in map: #{result.title}, protocol: #{inspect(result.download_protocol)}"
+        )
+
+        {result.download_url, result}
+      end)
       |> Map.new()
 
     {:noreply,
