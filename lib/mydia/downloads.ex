@@ -321,11 +321,24 @@ defmodule Mydia.Downloads do
       {:ok, %Download{}}
   """
   def initiate_download(%SearchResult{} = search_result, opts \\ []) do
+    # Use protocol from search result
+    download_type = search_result.download_protocol
+    Logger.info("Download protocol: #{inspect(download_type)} for #{search_result.title}")
+    Logger.info("Full search_result struct: #{inspect(search_result, limit: :infinity)}")
+
+    opts = Keyword.put(opts, :download_type, download_type)
+
     with :ok <- check_for_duplicate_download(search_result, opts),
-         {:ok, client_config} <- select_download_client(opts),
-         {:ok, adapter} <- get_adapter_for_client(client_config),
-         {:ok, client_id} <- add_torrent_to_client(adapter, client_config, search_result, opts),
+         {:ok, client_config, client_id, detected_type} <-
+           select_and_add_to_client(search_result, opts),
          {:ok, download} <- create_download_record(search_result, client_config, client_id, opts) do
+      # Use detected type as fallback if protocol wasn't set
+      final_type = download_type || detected_type
+
+      Logger.info(
+        "Final download type: #{inspect(final_type)} (original: #{inspect(download_type)}, detected: #{inspect(detected_type)})"
+      )
+
       # Track event
       actor_type = Keyword.get(opts, :actor_type, :system)
       actor_id = Keyword.get(opts, :actor_id, "downloads_context")
@@ -346,6 +359,91 @@ defmodule Mydia.Downloads do
   end
 
   ## Private Functions
+
+  # Selects appropriate client and adds the download, with smart fallback if type is detected
+  defp select_and_add_to_client(search_result, opts) do
+    download_type = Keyword.get(opts, :download_type)
+
+    # First, prepare the torrent/nzb input (download file if needed)
+    with {:ok, torrent_input_result} <- prepare_torrent_input(search_result.download_url) do
+      # Extract detected type from the downloaded content
+      detected_type =
+        case torrent_input_result do
+          {:file, _body, type} -> type
+          _ -> nil
+        end
+
+      # Use detected type as fallback if download_type is nil
+      final_download_type = download_type || detected_type
+
+      Logger.info(
+        "File type detection: original=#{inspect(download_type)}, detected=#{inspect(detected_type)}, final=#{inspect(final_download_type)}"
+      )
+
+      # Update opts with the final download type and title
+      opts_with_type =
+        opts
+        |> Keyword.put(:download_type, final_download_type)
+        |> Keyword.put(:title, search_result.title)
+
+      # Now select the appropriate client based on the final type
+      with {:ok, client_config} <- select_download_client(opts_with_type),
+           {:ok, adapter} <- get_adapter_for_client(client_config) do
+        # Extract the actual torrent input (without the type)
+        torrent_input =
+          case torrent_input_result do
+            {:file, body, _type} -> {:file, body}
+            other -> other
+          end
+
+        # Add to the selected client
+        case add_torrent_to_client_with_input(
+               adapter,
+               client_config,
+               torrent_input,
+               opts_with_type
+             ) do
+          {:ok, client_id} ->
+            {:ok, client_config, client_id, final_download_type}
+
+          {:error, _} = error ->
+            error
+        end
+      end
+    end
+  end
+
+  # Version of add_torrent_to_client that accepts pre-downloaded input
+  defp add_torrent_to_client_with_input(adapter, client_config, torrent_input, opts) do
+    client_map_config = config_to_map(client_config)
+    category = Keyword.get(opts, :category, client_config.category)
+    title = Keyword.get(opts, :title)
+
+    torrent_opts =
+      []
+      |> maybe_add_opt(:category, category)
+      |> maybe_add_opt(:title, title)
+
+    case Client.add_torrent(adapter, client_map_config, torrent_input, torrent_opts) do
+      {:ok, client_id} ->
+        {:ok, client_id}
+
+      {:error, error} ->
+        {:error, {:client_error, error}}
+    end
+  end
+
+  # Check if a client type matches a download type
+  defp client_type_matches?(client_type, download_type) do
+    torrent_clients = [:transmission, :qbittorrent]
+    usenet_clients = [:nzbget, :sabnzbd]
+
+    case download_type do
+      :torrent -> client_type in torrent_clients
+      :nzb -> client_type in usenet_clients
+      _ -> true
+    end
+  end
 
   defp apply_download_filters(query, opts) do
     Enum.reduce(opts, query, fn
@@ -517,6 +615,7 @@ defmodule Mydia.Downloads do
 
   defp select_download_client(opts) do
     client_name = Keyword.get(opts, :client_name)
+    download_type = Keyword.get(opts, :download_type)
 
     cond do
       # Use specific client if requested
@@ -526,9 +625,9 @@ defmodule Mydia.Downloads do
           client -> {:ok, client}
         end
 
-      # Otherwise select by priority
+      # Otherwise select by priority, filtered by download type
       true ->
-        case select_client_by_priority() do
+        case select_client_by_priority(download_type) do
           nil -> {:error, :no_clients_configured}
           client -> {:ok, client}
         end
@@ -540,16 +639,41 @@ defmodule Mydia.Downloads do
     |> Enum.find(&(&1.name == name && &1.enabled))
   end
 
-  defp select_client_by_priority do
-    Settings.list_download_client_configs()
-    |> Enum.filter(& &1.enabled)
-    |> Enum.sort_by(& &1.priority, :asc)
-    |> List.first()
+  defp select_client_by_priority(download_type \\ nil) do
+    # Torrent clients
+    torrent_clients = [:transmission, :qbittorrent]
+    # Usenet clients
+    usenet_clients = [:nzbget, :sabnzbd]
+
+    client =
+      Settings.list_download_client_configs()
+      |> Enum.filter(& &1.enabled)
+      |> Enum.filter(fn client ->
+        case download_type do
+          :torrent -> client.type in torrent_clients
+          :nzb -> client.type in usenet_clients
+          # No filter if type unknown
+          _ -> true
+        end
+      end)
+      |> Enum.sort_by(& &1.priority, :asc)
+      |> List.first()
+
+    if client do
+      Logger.info(
+        "Selected download client: #{client.name} (type: #{client.type}, priority: #{client.priority}) for download_type: #{download_type}"
+      )
+    else
+      Logger.warning("No suitable client found for download_type: #{download_type}")
+    end
+
+    client
   end
 
   defp get_adapter_for_client(client_config) do
     case Registry.get_adapter(client_config.type) do
       {:ok, adapter} ->
+        Logger.info("Using adapter #{inspect(adapter)} for client type #{client_config.type}")
         {:ok, adapter}
 
       {:error, _} = error ->
@@ -562,7 +686,14 @@ defmodule Mydia.Downloads do
 
     # For HTTP(S) URLs, download the torrent file and pass it as content
     # This avoids redirect issues that download clients can't handle
-    with {:ok, torrent_input} <- prepare_torrent_input(search_result.download_url) do
+    with {:ok, torrent_input_result} <- prepare_torrent_input(search_result.download_url) do
+      # Extract torrent input and detected type
+      {torrent_input, detected_type} =
+        case torrent_input_result do
+          {:file, body, type} -> {{:file, body}, type}
+          other -> {other, nil}
+        end
+
       category = Keyword.get(opts, :category, client_config.category)
 
       torrent_opts =
@@ -571,7 +702,7 @@ defmodule Mydia.Downloads do
 
       case Client.add_torrent(adapter, client_map_config, torrent_input, torrent_opts) do
         {:ok, client_id} ->
-          {:ok, client_id}
+          {:ok, client_id, detected_type}
 
         {:error, error} ->
           {:error, {:client_error, error}}
@@ -818,7 +949,7 @@ defmodule Mydia.Downloads do
   end
 
   defp download_torrent_file(url) do
-    Logger.debug("Downloading torrent file from: #{url}")
+    Logger.info("Downloading file from URL: #{url}")
 
     # First check if the URL redirects to a magnet link
     # by manually following redirects (Req can't handle magnet: scheme)
@@ -831,8 +962,32 @@ defmodule Mydia.Downloads do
         # Download the actual torrent file
         case Req.get(final_url) do
           {:ok, %{status: 200, body: body}} when is_binary(body) ->
-            Logger.debug("Successfully downloaded torrent file (#{byte_size(body)} bytes)")
-            {:ok, {:file, body}}
+            Logger.info("Successfully downloaded file (#{byte_size(body)} bytes)")
+
+            Logger.info(
+              "Content preview (first 500 chars): #{inspect(String.slice(body, 0, 500))}"
+            )
+
+            # Check if it looks like an NZB file
+            is_nzb = String.contains?(body, "<?xml") and String.contains?(body, "nzb")
+
+            is_torrent =
+              String.starts_with?(body, "d8:announce") or
+                (byte_size(body) > 11 and :binary.part(body, 0, 11) == "d8:announce")
+
+            # Determine file type
+            detected_type =
+              cond do
+                is_nzb -> :nzb
+                is_torrent -> :torrent
+                true -> nil
+              end
+
+            Logger.info(
+              "File type detection: is_nzb=#{is_nzb}, is_torrent=#{is_torrent}, detected_type=#{inspect(detected_type)}"
+            )
+
+            {:ok, {:file, body, detected_type}}
 
           {:ok, %{status: status}} ->
             Logger.error("Failed to download torrent file: HTTP #{status}")

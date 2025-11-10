@@ -138,7 +138,13 @@ defmodule Mydia.Downloads.Client.Nzbget do
 
   defp do_add_nzb(config, {:file, file_contents}, opts) do
     # For file uploads, we need to base64 encode the content
-    nzb_filename = "upload.nzb"
+    # Use the title from opts if provided, otherwise fall back to "upload.nzb"
+    nzb_filename =
+      case Keyword.get(opts, :title) do
+        nil -> "upload.nzb"
+        title -> "#{title}.nzb"
+      end
+
     nzb_content_base64 = Base.encode64(file_contents)
     category = Keyword.get(opts, :category, "")
     priority = map_priority(Keyword.get(opts, :priority))

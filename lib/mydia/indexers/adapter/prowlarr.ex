@@ -227,6 +227,33 @@ defmodule Mydia.Indexers.Adapter.Prowlarr do
       tmdb_id = extract_tmdb_id(item)
       imdb_id = extract_imdb_id(item)
 
+      # Extract download protocol (torrent vs usenet)
+      # Log all available fields to see what Prowlarr returns
+      Logger.info("Prowlarr item keys: #{inspect(Map.keys(item))}")
+
+      download_protocol =
+        case item["downloadProtocol"] || item["protocol"] do
+          "torrent" ->
+            :torrent
+
+          "usenet" ->
+            :nzb
+
+          other ->
+            Logger.info(
+              "Protocol field value: #{inspect(other)}, magnetUrl: #{inspect(item["magnetUrl"])}, downloadUrl has .nzb: #{item["downloadUrl"] && String.contains?(item["downloadUrl"], ".nzb")}"
+            )
+
+            # Fallback: detect from URL
+            cond do
+              item["magnetUrl"] -> :torrent
+              item["downloadUrl"] && String.contains?(item["downloadUrl"], ".nzb") -> :nzb
+              true -> nil
+            end
+        end
+
+      Logger.info("Detected protocol: #{inspect(download_protocol)} for #{title}")
+
       SearchResult.new(
         title: title,
         size: size,
@@ -239,7 +266,8 @@ defmodule Mydia.Indexers.Adapter.Prowlarr do
         published_at: published_at,
         quality: quality,
         tmdb_id: tmdb_id,
-        imdb_id: imdb_id
+        imdb_id: imdb_id,
+        download_protocol: download_protocol
       )
     rescue
       error ->

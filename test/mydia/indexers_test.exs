@@ -4,15 +4,40 @@ defmodule Mydia.IndexersTest do
   alias Mydia.Indexers
   alias Mydia.Indexers.SearchResult
   alias Mydia.Settings
+  alias Mydia.IndexerMock
 
   describe "search_all/2" do
     setup do
-      # Create test indexer configurations
+      # Disable all existing indexer configs from test database
+      Settings.list_indexer_configs()
+      |> Enum.filter(fn config -> not is_nil(config.inserted_at) end)
+      |> Enum.each(fn config ->
+        Settings.update_indexer_config(config, %{enabled: false})
+      end)
+
+      # Set up mock Prowlarr servers
+      bypass1 = Bypass.open()
+      bypass2 = Bypass.open()
+      bypass_disabled = Bypass.open()
+
+      # Mock successful search responses
+      IndexerMock.mock_prowlarr_all(bypass1, results: [
+        %{title: "Ubuntu.22.04.1080p", seeders: 100},
+        %{title: "Test.Release.720p", seeders: 50}
+      ])
+
+      IndexerMock.mock_prowlarr_all(bypass2, results: [
+        %{title: "Another.Release.1080p", seeders: 75}
+      ])
+
+      IndexerMock.mock_prowlarr_all(bypass_disabled)
+
+      # Create test indexer configurations pointing to Bypass servers
       {:ok, indexer1} =
         Settings.create_indexer_config(%{
           name: "Test Indexer 1",
           type: :prowlarr,
-          base_url: "http://localhost:9696",
+          base_url: "http://localhost:#{bypass1.port}",
           api_key: "test-key-1",
           enabled: true
         })
@@ -21,7 +46,7 @@ defmodule Mydia.IndexersTest do
         Settings.create_indexer_config(%{
           name: "Test Indexer 2",
           type: :prowlarr,
-          base_url: "http://localhost:9697",
+          base_url: "http://localhost:#{bypass2.port}",
           api_key: "test-key-2",
           enabled: true
         })
@@ -30,12 +55,12 @@ defmodule Mydia.IndexersTest do
         Settings.create_indexer_config(%{
           name: "Disabled Indexer",
           type: :prowlarr,
-          base_url: "http://localhost:9698",
+          base_url: "http://localhost:#{bypass_disabled.port}",
           api_key: "test-key-3",
           enabled: false
         })
 
-      %{indexer1: indexer1, indexer2: indexer2}
+      %{indexer1: indexer1, indexer2: indexer2, bypass1: bypass1, bypass2: bypass2}
     end
 
     test "returns empty list when no indexers are enabled" do
@@ -50,47 +75,34 @@ defmodule Mydia.IndexersTest do
     end
 
     test "searches all enabled indexers concurrently", %{indexer1: _, indexer2: _} do
-      # Mock the adapter to return test results
-      # Note: In a real implementation, you'd use Mox to mock the adapter
-      # For now, this test demonstrates the structure
-
-      # Since we can't easily mock the internal search calls without refactoring,
-      # we'll test the integration by ensuring the function completes
-      # and returns the expected structure
+      # Search across all enabled indexers (which are now mocked)
       assert {:ok, results} = Indexers.search_all("ubuntu")
       assert is_list(results)
+      # Should have results from both mock indexers
+      assert length(results) > 0
     end
 
-    test "filters results by minimum seeders" do
-      # Create sample results with different seeder counts
-      results = [
-        %SearchResult{
-          title: "Low seeders",
-          size: 1_000_000,
-          seeders: 2,
-          leechers: 10,
-          download_url: "magnet:?xt=urn:btih:abc123",
-          indexer: "Test"
-        },
-        %SearchResult{
-          title: "High seeders",
-          size: 1_000_000,
-          seeders: 100,
-          leechers: 10,
-          download_url: "magnet:?xt=urn:btih:def456",
-          indexer: "Test"
-        }
-      ]
+    test "filters results by minimum seeders", %{bypass1: bypass1} do
+      # Set up mock with results having different seeder counts
+      IndexerMock.mock_prowlarr_search(bypass1, results: [
+        %{title: "Low.seeders", seeders: 2},
+        %{title: "High.seeders", seeders: 100}
+      ])
 
       # Test with minimum 10 seeders - should only return the high seeder result
       assert {:ok, filtered} = Indexers.search_all("test", min_seeders: 10)
-
-      # The actual filtering happens in the internal implementation
-      # This test structure shows how it should work
       assert is_list(filtered)
+      # With min_seeders: 10, we should only get results with >= 10 seeders
+      assert Enum.all?(filtered, fn result -> result.seeders >= 10 end)
     end
 
-    test "limits results to max_results option" do
+    test "limits results to max_results option", %{bypass1: bypass1} do
+      # Set up mock with many results
+      many_results = Enum.map(1..20, fn i ->
+        %{title: "Result.#{i}", seeders: i * 5}
+      end)
+      IndexerMock.mock_prowlarr_search(bypass1, results: many_results)
+
       assert {:ok, results} = Indexers.search_all("popular query", max_results: 5)
       assert length(results) <= 5
     end
@@ -299,14 +311,37 @@ defmodule Mydia.IndexersTest do
   end
 
   describe "performance and error handling" do
+    setup do
+      # Disable all existing indexer configs
+      Settings.list_indexer_configs()
+      |> Enum.filter(fn config -> not is_nil(config.inserted_at) end)
+      |> Enum.each(fn config ->
+        Settings.update_indexer_config(config, %{enabled: false})
+      end)
+
+      bypass = Bypass.open()
+      IndexerMock.mock_prowlarr_all(bypass)
+
+      {:ok, _indexer} =
+        Settings.create_indexer_config(%{
+          name: "Performance Test Indexer",
+          type: :prowlarr,
+          base_url: "http://localhost:#{bypass.port}",
+          api_key: "test-key",
+          enabled: true
+        })
+
+      %{bypass: bypass}
+    end
+
     test "completes within reasonable time for multiple indexers" do
       # Concurrent execution should be faster than sequential
       start_time = System.monotonic_time(:millisecond)
       {:ok, _results} = Indexers.search_all("test query")
       duration = System.monotonic_time(:millisecond) - start_time
 
-      # Should complete in reasonable time (adjust based on actual performance)
-      assert duration < 30_000, "Search took too long: #{duration}ms"
+      # With mocked responses, should complete quickly (under 5 seconds)
+      assert duration < 5_000, "Search took too long: #{duration}ms"
     end
 
     test "handles empty query string" do

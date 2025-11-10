@@ -74,7 +74,8 @@ defmodule Mydia.Indexers.SearchResult do
           quality: quality_info() | nil,
           metadata: map() | nil,
           tmdb_id: integer() | nil,
-          imdb_id: String.t() | nil
+          imdb_id: String.t() | nil,
+          download_protocol: :torrent | :nzb | nil
         }
 
   @enforce_keys [:title, :size, :seeders, :leechers, :download_url, :indexer]
@@ -91,7 +92,8 @@ defmodule Mydia.Indexers.SearchResult do
     :quality,
     :metadata,
     :tmdb_id,
-    :imdb_id
+    :imdb_id,
+    :download_protocol
   ]
 
   @doc """
