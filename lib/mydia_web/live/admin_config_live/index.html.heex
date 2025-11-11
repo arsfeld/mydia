@@ -594,35 +594,61 @@
               <%!-- Size Constraints --%>
               <div class="divider">Size Constraints</div>
               <div class="grid grid-cols-2 gap-4">
-                <.input
-                  field={@quality_profile_form[:rules]["min_size_mb"]}
-                  type="number"
-                  label="Minimum Size (MB)"
-                  min="0"
-                  step="1"
-                />
-                <.input
-                  field={@quality_profile_form[:rules]["max_size_mb"]}
-                  type="number"
-                  label="Maximum Size (MB)"
-                  min="0"
-                  step="1"
-                />
+                <div class="form-control">
+                  <label class="label" for="quality_profile_rules_min_size_mb">
+                    <span class="label-text">Minimum Size (MB)</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="quality_profile_rules_min_size_mb"
+                    name="quality_profile[rules][min_size_mb]"
+                    value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["min_size_mb"])}
+                    min="0"
+                    step="1"
+                    class="input input-bordered"
+                  />
+                </div>
+                <div class="form-control">
+                  <label class="label" for="quality_profile_rules_max_size_mb">
+                    <span class="label-text">Maximum Size (MB)</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="quality_profile_rules_max_size_mb"
+                    name="quality_profile[rules][max_size_mb]"
+                    value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["max_size_mb"])}
+                    min="0"
+                    step="1"
+                    class="input input-bordered"
+                  />
+                </div>
               </div>
               <%!-- Preferred Sources --%>
-              <.input
-                field={@quality_profile_form[:rules]["preferred_sources"]}
-                type="text"
-                label="Preferred Sources (comma-separated)"
-                placeholder="BluRay, WEB-DL, HDTV"
-              />
+              <div class="form-control">
+                <label class="label" for="quality_profile_rules_preferred_sources">
+                  <span class="label-text">Preferred Sources (comma-separated)</span>
+                </label>
+                <input
+                  type="text"
+                  id="quality_profile_rules_preferred_sources"
+                  name="quality_profile[rules][preferred_sources]"
+                  value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["preferred_sources"])}
+                  placeholder="BluRay, WEB-DL, HDTV"
+                  class="input input-bordered"
+                />
+              </div>
               <%!-- Description --%>
-              <.input
-                field={@quality_profile_form[:rules]["description"]}
-                type="textarea"
-                label="Description"
-                rows="2"
-              />
+              <div class="form-control">
+                <label class="label" for="quality_profile_rules_description">
+                  <span class="label-text">Description</span>
+                </label>
+                <textarea
+                  id="quality_profile_rules_description"
+                  name="quality_profile[rules][description]"
+                  rows="2"
+                  class="textarea textarea-bordered"
+                >{get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["description"])}</textarea>
+              </div>
             </div>
 
             <div class="modal-action">
