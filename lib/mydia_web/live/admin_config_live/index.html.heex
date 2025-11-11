@@ -602,7 +602,12 @@
                     type="number"
                     id="quality_profile_rules_min_size_mb"
                     name="quality_profile[rules][min_size_mb]"
-                    value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["min_size_mb"])}
+                    value={
+                      get_in(
+                        Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{},
+                        ["min_size_mb"]
+                      )
+                    }
                     min="0"
                     step="1"
                     class="input input-bordered"
@@ -616,7 +621,12 @@
                     type="number"
                     id="quality_profile_rules_max_size_mb"
                     name="quality_profile[rules][max_size_mb]"
-                    value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["max_size_mb"])}
+                    value={
+                      get_in(
+                        Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{},
+                        ["max_size_mb"]
+                      )
+                    }
                     min="0"
                     step="1"
                     class="input input-bordered"
@@ -632,7 +642,12 @@
                   type="text"
                   id="quality_profile_rules_preferred_sources"
                   name="quality_profile[rules][preferred_sources]"
-                  value={get_in(Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{}, ["preferred_sources"])}
+                  value={
+                    get_in(
+                      Ecto.Changeset.get_field(@quality_profile_form.source, :rules) || %{},
+                      ["preferred_sources"]
+                    )
+                  }
                   placeholder="BluRay, WEB-DL, HDTV"
                   class="input input-bordered"
                 />

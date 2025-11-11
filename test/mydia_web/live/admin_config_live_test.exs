@@ -296,7 +296,8 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       Mydia.Settings.list_indexer_configs()
       |> Enum.each(fn indexer_config ->
         # Skip runtime indexers (they can't be deleted from database)
-        unless is_binary(indexer_config.id) and String.starts_with?(indexer_config.id, "runtime::") do
+        unless is_binary(indexer_config.id) and
+                 String.starts_with?(indexer_config.id, "runtime::") do
           Mydia.Settings.delete_indexer_config(indexer_config)
         end
       end)
