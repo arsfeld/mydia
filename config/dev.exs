@@ -141,14 +141,7 @@ oidc_issuer =
 oidc_client_id = System.get_env("OIDC_CLIENT_ID")
 oidc_client_secret = System.get_env("OIDC_CLIENT_SECRET")
 
-IO.puts("Loading OIDC config:")
-IO.puts("  OIDC_ISSUER: #{inspect(oidc_issuer)}")
-IO.puts("  OIDC_CLIENT_ID: #{inspect(oidc_client_id)}")
-IO.puts("  OIDC_CLIENT_SECRET: #{inspect(oidc_client_secret)}")
-
 if oidc_issuer && oidc_client_id && oidc_client_secret do
-  IO.puts("Configuring Ueberauth with OIDC (ueberauth_oidcc style)...")
-
   # Configure oidcc library to allow HTTP for development
   config :oidcc, :http_cache_duration, 0
   config :oidcc, :provider_configuration_opts, %{request_opts: %{transport_opts: []}}
@@ -181,10 +174,4 @@ if oidc_issuer && oidc_client_id && oidc_client_secret do
            response_mode: "query"
          ]}
     ]
-
-  IO.puts("Ueberauth OIDC configured successfully!")
-  IO.puts("Issuer: #{oidc_issuer}")
-  IO.puts("Client ID: #{oidc_client_id}")
-else
-  IO.puts("OIDC not configured - missing environment variables")
 end
