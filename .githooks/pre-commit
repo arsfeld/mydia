@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# Pre-commit hook to check code formatting
+# This prevents commits with unformatted code
+
+set -e
+
+echo "Running format check..."
+
+# Check if we're in Docker environment or local
+if [ -f "./dev" ]; then
+  # Use the dev wrapper script
+  ./dev mix format --check-formatted
+else
+  # Fallback to direct mix command
+  mix format --check-formatted
+fi
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Code formatting check failed!"
+  echo ""
+  echo "Please run './dev format' (or 'mix format') to fix formatting issues."
+  echo "Then stage the changes and commit again."
+  echo ""
+  echo "To bypass this check (not recommended), use: git commit --no-verify"
+  exit 1
+fi
+
+echo "✅ Format check passed!"
