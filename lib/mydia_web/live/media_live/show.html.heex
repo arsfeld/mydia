@@ -6,39 +6,111 @@
   downloads_count={@downloads_count}
   pending_requests_count={@pending_requests_count}
 >
-  <%!-- Hero Section with Backdrop --%>
-  <Components.hero_section
-    media_item={@media_item}
-    playback_enabled={@playback_enabled}
-    next_episode={@next_episode}
-    next_episode_state={@next_episode_state}
-    auto_searching={@auto_searching}
-    downloads_with_status={@downloads_with_status}
-  />
+  <%!-- Page Container --%>
+  <div class="relative -mx-4 -mt-4 mb-4">
+    <%!-- Backdrop Image (if available) --%>
+    <%= if backdrop_url = get_backdrop_url(@media_item) do %>
+      <div class="absolute inset-0 overflow-hidden">
+        <img
+          src={backdrop_url}
+          alt={@media_item.title}
+          class="w-full h-full object-cover opacity-30"
+        />
+      </div>
+      <div class="absolute inset-0 bg-gradient-to-b from-transparent via-base-100/80 to-base-100">
+      </div>
+    <% end %>
+    <%!-- Content Container --%>
+    <div class="relative pt-16 pb-8 px-4">
+      <div class="flex flex-col lg:flex-row gap-6">
+        <%!-- Left Column: Hero Section (Poster & Quick Actions) --%>
+        <Components.hero_section
+          media_item={@media_item}
+          playback_enabled={@playback_enabled}
+          next_episode={@next_episode}
+          next_episode_state={@next_episode_state}
+          auto_searching={@auto_searching}
+          downloads_with_status={@downloads_with_status}
+        />
+        <%!-- Right Column: Main Content --%>
+        <div class="flex-1 min-w-0">
+          <%!-- Title and Basic Info --%>
+          <div class="mb-6">
+            <div class="flex items-start justify-between gap-4 mb-2">
+              <h1 class="text-4xl font-bold">{@media_item.title}</h1>
+              <.link navigate={~p"/media"} class="btn btn-ghost btn-sm">
+                <.icon name="hero-x-mark" class="w-5 h-5" />
+              </.link>
+            </div>
 
-  <%!-- Content Column Container --%>
-  <div class="flex-1 min-w-0">
-    <%!-- Overview Section --%>
-    <Components.overview_section media_item={@media_item} />
+            <%= if @media_item.original_title && @media_item.original_title != @media_item.title do %>
+              <p class="text-lg text-base-content/70 mb-2">{@media_item.original_title}</p>
+            <% end %>
 
-    <%!-- Episodes Section (TV Shows Only) --%>
-    <Components.episodes_section
-      media_item={@media_item}
-      expanded_seasons={@expanded_seasons}
-      auto_searching_season={@auto_searching_season}
-      rescanning_season={@rescanning_season}
-      auto_searching_episode={@auto_searching_episode}
-      playback_enabled={@playback_enabled}
-    />
+            <div class="flex flex-wrap items-center gap-3 text-base-content/70">
+              <%= if @media_item.year do %>
+                <span class="font-semibold">{@media_item.year}</span>
+              <% end %>
 
-    <%!-- Media Files Section --%>
-    <Components.media_files_section
-      media_item={@media_item}
-      refreshing_file_metadata={@refreshing_file_metadata}
-    />
+              <%= if rating = get_rating(@media_item) do %>
+                <span class="flex items-center gap-1">
+                  <.icon name="hero-star-solid" class="w-4 h-4 text-warning" />
+                  {rating}/10
+                </span>
+              <% end %>
 
-    <%!-- Timeline Section --%>
-    <Components.timeline_section timeline_events={@timeline_events} />
+              <%= if runtime = get_runtime(@media_item) do %>
+                <span>{runtime}</span>
+              <% end %>
+
+              <span class="badge badge-ghost">
+                {if @media_item.type == "movie", do: "Movie", else: "TV Show"}
+              </span>
+            </div>
+
+            <%!-- Genres --%>
+            <%= if genres = get_genres(@media_item) do %>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <span :for={genre <- genres} class="badge badge-outline">{genre}</span>
+              </div>
+            <% end %>
+          </div>
+          <%!-- Active Download Status --%>
+          <%= if download = get_download_status(@downloads_with_status) do %>
+            <div class="alert alert-info mb-6">
+              <.icon name="hero-arrow-down-tray" class="w-6 h-6" />
+              <div class="flex-1">
+                <h3 class="font-bold">Downloading</h3>
+                <div class="text-sm">
+                  {format_download_status(download.status)}
+                  <%= if download.progress do %>
+                    - {download.progress}%
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% end %>
+          <%!-- Overview Section --%>
+          <Components.overview_section media_item={@media_item} />
+          <%!-- Episodes Section (TV Shows Only) --%>
+          <Components.episodes_section
+            media_item={@media_item}
+            expanded_seasons={@expanded_seasons}
+            auto_searching_season={@auto_searching_season}
+            rescanning_season={@rescanning_season}
+            auto_searching_episode={@auto_searching_episode}
+            playback_enabled={@playback_enabled}
+          />
+          <%!-- Media Files Section --%>
+          <Components.media_files_section
+            media_item={@media_item}
+            refreshing_file_metadata={@refreshing_file_metadata}
+          />
+          <%!-- Timeline Section --%>
+          <Components.timeline_section timeline_events={@timeline_events} />
+        </div>
+      </div>
+    </div>
   </div>
 
   <%!-- Modals --%>

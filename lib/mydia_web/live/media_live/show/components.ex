@@ -20,212 +20,124 @@ defmodule MydiaWeb.MediaLive.Show.Components do
 
   def hero_section(assigns) do
     ~H"""
-    <div class="relative -mx-4 -mt-4 mb-4">
-      <%= if backdrop_url = get_backdrop_url(@media_item) do %>
-        <%!-- Backdrop image --%>
-        <div class="absolute inset-0 overflow-hidden">
+    <%!-- Left Column: Poster and Quick Actions --%>
+    <div class="lg:w-80 flex-shrink-0">
+      <%!-- Poster --%>
+      <div class="card bg-base-100 shadow-xl mb-4">
+        <figure class="aspect-[2/3] bg-base-300">
           <img
-            src={backdrop_url}
+            src={get_poster_url(@media_item)}
             alt={@media_item.title}
-            class="w-full h-full object-cover opacity-30"
+            class="w-full h-full object-cover"
           />
-        </div>
-        <%!-- Gradient overlay --%>
-        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-base-100/80 to-base-100">
-        </div>
-      <% end %>
-      <%!-- Content container with relative positioning --%>
-      <div class="relative pt-16 pb-8 px-4">
-        <div class="flex flex-col lg:flex-row gap-6">
-          <%!-- Left Column: Poster and Quick Actions --%>
-          <div class="lg:w-80 flex-shrink-0">
-            <%!-- Poster --%>
-            <div class="card bg-base-100 shadow-xl mb-4">
-              <figure class="aspect-[2/3] bg-base-300">
-                <img
-                  src={get_poster_url(@media_item)}
-                  alt={@media_item.title}
-                  class="w-full h-full object-cover"
-                />
-              </figure>
-            </div>
+        </figure>
+      </div>
 
-            <%!-- Quick Actions --%>
-            <div class="flex flex-col gap-2">
-              <%!-- Play Button (for content with media files) --%>
-              <%= if @playback_enabled && @media_item.type == "movie" && length(@media_item.media_files) > 0 do %>
-                <.link navigate={~p"/play/movie/#{@media_item.id}"} class="btn btn-primary btn-block">
-                  <.icon name="hero-play-circle-solid" class="w-5 h-5" /> Play Movie
-                </.link>
+      <%!-- Quick Actions --%>
+      <div class="flex flex-col gap-2">
+        <%!-- Play Button (for content with media files) --%>
+        <%= if @playback_enabled && @media_item.type == "movie" && length(@media_item.media_files) > 0 do %>
+          <.link navigate={~p"/play/movie/#{@media_item.id}"} class="btn btn-primary btn-block">
+            <.icon name="hero-play-circle-solid" class="w-5 h-5" /> Play Movie
+          </.link>
 
-                <div class="divider my-1"></div>
-              <% end %>
+          <div class="divider my-1"></div>
+        <% end %>
 
-              <%!-- Play Next Button (for TV shows with next episode) --%>
-              <%= if @playback_enabled && @media_item.type == "tv_show" && @next_episode do %>
-                <.link
-                  navigate={~p"/play/episode/#{@next_episode.id}"}
-                  class="btn btn-primary btn-block"
-                >
-                  <.icon name="hero-play-circle-solid" class="w-5 h-5" />
-                  {next_episode_button_text(@next_episode_state)}
-                </.link>
+        <%!-- Play Next Button (for TV shows with next episode) --%>
+        <%= if @playback_enabled && @media_item.type == "tv_show" && @next_episode do %>
+          <.link navigate={~p"/play/episode/#{@next_episode.id}"} class="btn btn-primary btn-block">
+            <.icon name="hero-play-circle-solid" class="w-5 h-5" />
+            {next_episode_button_text(@next_episode_state)}
+          </.link>
 
-                <div class="divider my-1"></div>
-              <% end %>
+          <div class="divider my-1"></div>
+        <% end %>
 
-              <button
-                type="button"
-                phx-click="auto_search_download"
-                class="btn btn-primary btn-block"
-                disabled={@auto_searching || !can_auto_search?(@media_item, @downloads_with_status)}
-              >
-                <%= if @auto_searching do %>
-                  <span class="loading loading-spinner loading-sm"></span> Searching...
-                <% else %>
-                  <.icon name="hero-bolt" class="w-5 h-5" /> Auto Search & Download
-                <% end %>
-              </button>
+        <button
+          type="button"
+          phx-click="auto_search_download"
+          class="btn btn-primary btn-block"
+          disabled={@auto_searching || !can_auto_search?(@media_item, @downloads_with_status)}
+        >
+          <%= if @auto_searching do %>
+            <span class="loading loading-spinner loading-sm"></span> Searching...
+          <% else %>
+            <.icon name="hero-bolt" class="w-5 h-5" /> Auto Search & Download
+          <% end %>
+        </button>
 
-              <button
-                type="button"
-                phx-click="manual_search"
-                class="btn btn-outline btn-block"
-              >
-                <.icon name="hero-magnifying-glass" class="w-5 h-5" /> Manual Search
-              </button>
+        <button type="button" phx-click="manual_search" class="btn btn-outline btn-block">
+          <.icon name="hero-magnifying-glass" class="w-5 h-5" /> Manual Search
+        </button>
 
-              <button
-                type="button"
-                phx-click="toggle_monitored"
-                class={[
-                  "btn btn-block",
-                  @media_item.monitored && "btn-success",
-                  !@media_item.monitored && "btn-ghost"
-                ]}
-              >
-                <.icon
-                  name={if @media_item.monitored, do: "hero-bookmark-solid", else: "hero-bookmark"}
-                  class="w-5 h-5"
-                />
-                {if @media_item.monitored, do: "Monitored", else: "Not Monitored"}
-              </button>
+        <button
+          type="button"
+          phx-click="toggle_monitored"
+          class={[
+            "btn btn-block",
+            @media_item.monitored && "btn-success",
+            !@media_item.monitored && "btn-ghost"
+          ]}
+        >
+          <.icon
+            name={if @media_item.monitored, do: "hero-bookmark-solid", else: "hero-bookmark"}
+            class="w-5 h-5"
+          />
+          {if @media_item.monitored, do: "Monitored", else: "Not Monitored"}
+        </button>
 
-              <button
-                type="button"
-                phx-click="refresh_metadata"
-                class="btn btn-ghost btn-block"
-                title="Refresh metadata and episodes from metadata provider"
-              >
-                <.icon name="hero-arrow-path" class="w-5 h-5" /> Refresh Metadata
-              </button>
+        <button
+          type="button"
+          phx-click="refresh_metadata"
+          class="btn btn-ghost btn-block"
+          title="Refresh metadata and episodes from metadata provider"
+        >
+          <.icon name="hero-arrow-path" class="w-5 h-5" /> Refresh Metadata
+        </button>
 
-              <%= if has_media_files?(@media_item) do %>
-                <button
-                  type="button"
-                  phx-click="show_rename_modal"
-                  class="btn btn-ghost btn-block"
-                  title="Rename files to follow naming convention"
-                >
-                  <.icon name="hero-pencil-square" class="w-5 h-5" /> Rename Files
-                </button>
-              <% end %>
+        <%= if has_media_files?(@media_item) do %>
+          <button
+            type="button"
+            phx-click="show_rename_modal"
+            class="btn btn-ghost btn-block"
+            title="Rename files to follow naming convention"
+          >
+            <.icon name="hero-pencil-square" class="w-5 h-5" /> Rename Files
+          </button>
+        <% end %>
 
-              <div class="divider my-2"></div>
+        <div class="divider my-2"></div>
 
-              <%!-- Quality Profile Display --%>
-              <div class="stat bg-base-200 rounded-box p-3">
-                <div class="stat-title text-xs">Quality Profile</div>
-                <div class="stat-value text-sm">
-                  <%= if @media_item.quality_profile do %>
-                    {@media_item.quality_profile.name}
-                  <% else %>
-                    <span class="text-base-content/50">Not Set</span>
-                  <% end %>
-                </div>
-              </div>
-
-              <div class="divider my-2"></div>
-
-              <button
-                type="button"
-                phx-click="show_edit_modal"
-                class="btn btn-ghost btn-block justify-start"
-              >
-                <.icon name="hero-pencil" class="w-5 h-5" /> Edit Settings
-              </button>
-
-              <button
-                type="button"
-                phx-click="show_delete_confirm"
-                class="btn btn-error btn-ghost btn-block justify-start"
-              >
-                <.icon name="hero-trash" class="w-5 h-5" /> Delete
-              </button>
-            </div>
-          </div>
-
-          <%!-- Right Column: Details and Information --%>
-          <div class="flex-1 min-w-0">
-            <%!-- Title and Basic Info --%>
-            <div class="mb-6">
-              <div class="flex items-start justify-between gap-4 mb-2">
-                <h1 class="text-4xl font-bold">{@media_item.title}</h1>
-                <.link navigate={~p"/media"} class="btn btn-ghost btn-sm">
-                  <.icon name="hero-x-mark" class="w-5 h-5" />
-                </.link>
-              </div>
-
-              <%= if @media_item.original_title && @media_item.original_title != @media_item.title do %>
-                <p class="text-lg text-base-content/70 mb-2">{@media_item.original_title}</p>
-              <% end %>
-
-              <div class="flex flex-wrap items-center gap-3 text-base-content/70">
-                <%= if @media_item.year do %>
-                  <span class="font-semibold">{@media_item.year}</span>
-                <% end %>
-
-                <%= if rating = get_rating(@media_item) do %>
-                  <span class="flex items-center gap-1">
-                    <.icon name="hero-star-solid" class="w-4 h-4 text-warning" />
-                    {rating}/10
-                  </span>
-                <% end %>
-
-                <%= if runtime = get_runtime(@media_item) do %>
-                  <span>{runtime}</span>
-                <% end %>
-
-                <span class="badge badge-ghost">
-                  {if @media_item.type == "movie", do: "Movie", else: "TV Show"}
-                </span>
-              </div>
-
-              <%!-- Genres --%>
-              <%= if genres = get_genres(@media_item) do %>
-                <div class="flex flex-wrap gap-2 mt-3">
-                  <span :for={genre <- genres} class="badge badge-outline">{genre}</span>
-                </div>
-              <% end %>
-            </div>
-
-            <%!-- Active Download Status --%>
-            <%= if download = get_download_status(@downloads_with_status) do %>
-              <div class="alert alert-info mb-6">
-                <.icon name="hero-arrow-down-tray" class="w-6 h-6" />
-                <div class="flex-1">
-                  <h3 class="font-bold">Downloading</h3>
-                  <div class="text-sm">
-                    {format_download_status(download.status)}
-                    <%= if download.progress do %>
-                      - {download.progress}%
-                    <% end %>
-                  </div>
-                </div>
-              </div>
+        <%!-- Quality Profile Display --%>
+        <div class="stat bg-base-200 rounded-box p-3">
+          <div class="stat-title text-xs">Quality Profile</div>
+          <div class="stat-value text-sm">
+            <%= if @media_item.quality_profile do %>
+              {@media_item.quality_profile.name}
+            <% else %>
+              <span class="text-base-content/50">Not Set</span>
             <% end %>
           </div>
         </div>
+
+        <div class="divider my-2"></div>
+
+        <button
+          type="button"
+          phx-click="show_edit_modal"
+          class="btn btn-ghost btn-block justify-start"
+        >
+          <.icon name="hero-pencil" class="w-5 h-5" /> Edit Settings
+        </button>
+
+        <button
+          type="button"
+          phx-click="show_delete_confirm"
+          class="btn btn-error btn-ghost btn-block justify-start"
+        >
+          <.icon name="hero-trash" class="w-5 h-5" /> Delete
+        </button>
       </div>
     </div>
     """
@@ -334,62 +246,70 @@ defmodule MydiaWeb.MediaLive.Show.Components do
               </div>
               <div class="collapse-content">
                 <%!-- Season-level actions --%>
-                <div class="flex gap-2 mb-4 justify-end">
-                  <button
-                    type="button"
-                    phx-click="auto_search_season"
-                    phx-value-season-number={season_num}
-                    class="btn btn-sm btn-primary"
-                    disabled={@auto_searching_season == season_num}
-                    title="Auto search and download this season (prefers season pack)"
+                <div class="flex gap-1 mb-4 justify-end">
+                  <div
+                    class="tooltip tooltip-bottom"
+                    data-tip="Auto search season (prefers season pack)"
                   >
-                    <%= if @auto_searching_season == season_num do %>
-                      <span class="loading loading-spinner loading-xs"></span> Searching...
-                    <% else %>
-                      <.icon name="hero-bolt" class="w-4 h-4" /> Auto Search Season
-                    <% end %>
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="manual_search_season"
-                    phx-value-season-number={season_num}
-                    class="btn btn-sm btn-outline"
-                    title="Manually search and select releases for this season"
-                  >
-                    <.icon name="hero-magnifying-glass" class="w-4 h-4" /> Manual Search
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="rescan_season_files"
-                    phx-value-season-number={season_num}
-                    class="btn btn-sm btn-ghost"
-                    disabled={@rescanning_season == season_num}
-                    title="Re-scan all file metadata for this season"
-                  >
-                    <%= if @rescanning_season == season_num do %>
-                      <span class="loading loading-spinner loading-xs"></span> Re-scanning...
-                    <% else %>
-                      <.icon name="hero-arrow-path" class="w-4 h-4" /> Re-scan Files
-                    <% end %>
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="monitor_season"
-                    phx-value-season-number={season_num}
-                    class="btn btn-sm btn-ghost"
-                    title="Monitor all episodes in this season"
-                  >
-                    <.icon name="hero-bookmark-solid" class="w-4 h-4" /> Monitor All
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="unmonitor_season"
-                    phx-value-season-number={season_num}
-                    class="btn btn-sm btn-ghost"
-                    title="Unmonitor all episodes in this season"
-                  >
-                    <.icon name="hero-bookmark" class="w-4 h-4" /> Unmonitor All
-                  </button>
+                    <button
+                      type="button"
+                      phx-click="auto_search_season"
+                      phx-value-season-number={season_num}
+                      class="btn btn-sm btn-primary"
+                      disabled={@auto_searching_season == season_num}
+                    >
+                      <%= if @auto_searching_season == season_num do %>
+                        <span class="loading loading-spinner loading-xs"></span>
+                      <% else %>
+                        <.icon name="hero-bolt" class="w-4 h-4" />
+                      <% end %>
+                    </button>
+                  </div>
+                  <div class="tooltip tooltip-bottom" data-tip="Manual search season">
+                    <button
+                      type="button"
+                      phx-click="manual_search_season"
+                      phx-value-season-number={season_num}
+                      class="btn btn-sm btn-outline"
+                    >
+                      <.icon name="hero-magnifying-glass" class="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div class="tooltip tooltip-bottom" data-tip="Re-scan file metadata">
+                    <button
+                      type="button"
+                      phx-click="rescan_season_files"
+                      phx-value-season-number={season_num}
+                      class="btn btn-sm btn-ghost"
+                      disabled={@rescanning_season == season_num}
+                    >
+                      <%= if @rescanning_season == season_num do %>
+                        <span class="loading loading-spinner loading-xs"></span>
+                      <% else %>
+                        <.icon name="hero-arrow-path" class="w-4 h-4" />
+                      <% end %>
+                    </button>
+                  </div>
+                  <div class="tooltip tooltip-bottom" data-tip="Monitor all episodes">
+                    <button
+                      type="button"
+                      phx-click="monitor_season"
+                      phx-value-season-number={season_num}
+                      class="btn btn-sm btn-ghost"
+                    >
+                      <.icon name="hero-bookmark-solid" class="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div class="tooltip tooltip-bottom" data-tip="Unmonitor all episodes">
+                    <button
+                      type="button"
+                      phx-click="unmonitor_season"
+                      phx-value-season-number={season_num}
+                      class="btn btn-sm btn-ghost"
+                    >
+                      <.icon name="hero-bookmark" class="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div class="overflow-x-auto">
                   <table class="table table-sm">
