@@ -250,21 +250,34 @@ defmodule Mydia.Jobs.LibraryScanner do
         metadata_config = Metadata.default_relay_config()
 
         # Process metadata enrichment for new files (outside transaction)
-        Enum.each(result.new_media_files, fn
-          {:ok, media_file, file_info} ->
-            # Try to parse, match, and enrich the file
-            process_media_file(media_file, file_info, metadata_config)
+        # Track results for statistics
+        enrichment_results =
+          Enum.map(result.new_media_files, fn
+            {:ok, media_file, file_info} ->
+              # Try to parse, match, and enrich the file
+              process_result = process_media_file(media_file, file_info, metadata_config)
+              {media_file, process_result}
 
-          {:error, _file_info} ->
-            :ok
-        end)
+            {:error, _file_info} ->
+              nil
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        # Count type mismatches in new files
+        type_mismatch_count =
+          Enum.count(enrichment_results, fn {_file, result} ->
+            result == {:error, :library_type_mismatch}
+          end)
 
         # Initialize tracking for robust cleanup operations
         cleanup_stats = %{
           orphaned_files_fixed: 0,
           tv_orphans_fixed: 0,
           associations_updated: 0,
-          invalid_paths_removed: 0
+          invalid_paths_removed: 0,
+          type_mismatches_detected: type_mismatch_count,
+          movies_in_series_libs: 0,
+          tv_in_movies_libs: 0
         }
 
         # 1. Re-enrich completely orphaned files (no media_item_id and no episode_id)
@@ -350,18 +363,54 @@ defmodule Mydia.Jobs.LibraryScanner do
             cleanup_stats
           end
 
-        # 4. Track removed files with invalid paths
+        # 4. Detect existing type mismatches in library
+        # Find movies in series-only libraries
+        movies_in_series_libs =
+          detect_type_mismatches(existing_files, library_path, :movies_in_series)
+
+        # Find TV shows in movies-only libraries
+        tv_in_movies_libs =
+          detect_type_mismatches(existing_files, library_path, :tv_in_movies)
+
+        cleanup_stats =
+          cleanup_stats
+          |> Map.put(:movies_in_series_libs, length(movies_in_series_libs))
+          |> Map.put(:tv_in_movies_libs, length(tv_in_movies_libs))
+
+        # Log detected mismatches
+        if movies_in_series_libs != [] do
+          Logger.warning("Detected movies in series-only library",
+            count: length(movies_in_series_libs),
+            library_path: library_path.path,
+            sample_paths: Enum.take(movies_in_series_libs, 3) |> Enum.map(& &1.path)
+          )
+        end
+
+        if tv_in_movies_libs != [] do
+          Logger.warning("Detected TV shows in movies-only library",
+            count: length(tv_in_movies_libs),
+            library_path: library_path.path,
+            sample_paths: Enum.take(tv_in_movies_libs, 3) |> Enum.map(& &1.path)
+          )
+        end
+
+        # 5. Track removed files with invalid paths
         cleanup_stats =
           Map.put(cleanup_stats, :invalid_paths_removed, length(result.changes.deleted_files))
 
         # Log cleanup summary
         if cleanup_stats.orphaned_files_fixed > 0 or cleanup_stats.tv_orphans_fixed > 0 or
-             cleanup_stats.associations_updated > 0 or cleanup_stats.invalid_paths_removed > 0 do
+             cleanup_stats.associations_updated > 0 or cleanup_stats.invalid_paths_removed > 0 or
+             cleanup_stats.type_mismatches_detected > 0 or cleanup_stats.movies_in_series_libs > 0 or
+             cleanup_stats.tv_in_movies_libs > 0 do
           Logger.info("Cleanup summary",
             orphaned_files_fixed: cleanup_stats.orphaned_files_fixed,
             tv_orphans_fixed: cleanup_stats.tv_orphans_fixed,
             associations_updated: cleanup_stats.associations_updated,
-            invalid_paths_removed: cleanup_stats.invalid_paths_removed
+            invalid_paths_removed: cleanup_stats.invalid_paths_removed,
+            type_mismatches_detected: cleanup_stats.type_mismatches_detected,
+            movies_in_series_libs: cleanup_stats.movies_in_series_libs,
+            tv_in_movies_libs: cleanup_stats.tv_in_movies_libs
           )
         end
 
@@ -398,7 +447,10 @@ defmodule Mydia.Jobs.LibraryScanner do
              orphaned_files_fixed: Map.get(cleanup_stats, :orphaned_files_fixed, 0),
              tv_orphans_fixed: Map.get(cleanup_stats, :tv_orphans_fixed, 0),
              associations_updated: Map.get(cleanup_stats, :associations_updated, 0),
-             invalid_paths_removed: Map.get(cleanup_stats, :invalid_paths_removed, 0)
+             invalid_paths_removed: Map.get(cleanup_stats, :invalid_paths_removed, 0),
+             type_mismatches_detected: Map.get(cleanup_stats, :type_mismatches_detected, 0),
+             movies_in_series_libs: Map.get(cleanup_stats, :movies_in_series_libs, 0),
+             tv_in_movies_libs: Map.get(cleanup_stats, :tv_in_movies_libs, 0)
            }}
         )
 
@@ -448,12 +500,23 @@ defmodule Mydia.Jobs.LibraryScanner do
 
             # Extract technical file metadata (resolution, codec, bitrate, etc.)
             extract_and_update_file_metadata(media_file, file_info)
+            {:ok, :enriched}
+
+          {:error, {:library_type_mismatch, message}} ->
+            Logger.warning("Library type mismatch detected",
+              path: file_info.path,
+              error: message
+            )
+
+            {:error, :library_type_mismatch}
 
           {:error, reason} ->
             Logger.warning("Failed to enrich media",
               path: file_info.path,
               reason: reason
             )
+
+            {:error, :enrichment_failed}
         end
 
       {:error, :unknown_media_type} ->
@@ -461,21 +524,29 @@ defmodule Mydia.Jobs.LibraryScanner do
           path: file_info.path
         )
 
+        {:error, :unknown_media_type}
+
       {:error, :no_matches_found} ->
         Logger.warning("No metadata matches found",
           path: file_info.path
         )
+
+        {:error, :no_matches_found}
 
       {:error, :low_confidence_match} ->
         Logger.warning("Only low confidence matches found",
           path: file_info.path
         )
 
+        {:error, :low_confidence_match}
+
       {:error, reason} ->
         Logger.warning("Failed to match media file",
           path: file_info.path,
           reason: reason
         )
+
+        {:error, reason}
     end
   rescue
     error ->
@@ -483,6 +554,35 @@ defmodule Mydia.Jobs.LibraryScanner do
         path: file_info.path,
         error: Exception.message(error)
       )
+
+      {:error, :exception}
+  end
+
+  # Detects type mismatches in existing files based on library path type
+  defp detect_type_mismatches(existing_files, library_path, mismatch_type) do
+    # Skip detection for :mixed libraries (they allow both types)
+    if library_path.type == :mixed do
+      []
+    else
+      existing_files
+      |> Repo.preload([:media_item, :episode])
+      |> Enum.filter(fn file ->
+        case mismatch_type do
+          :movies_in_series ->
+            # Movies in a series-only library
+            library_path.type == :series and
+              not is_nil(file.media_item_id) and
+              file.media_item != nil and
+              file.media_item.type == "movie"
+
+          :tv_in_movies ->
+            # TV shows in a movies-only library
+            library_path.type == :movies and
+              not is_nil(file.episode_id) and
+              file.episode != nil
+        end
+      end)
+    end
   end
 
   # Attempts to fix an orphaned TV show file by matching it to an episode
