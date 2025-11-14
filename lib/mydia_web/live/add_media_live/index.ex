@@ -381,6 +381,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
   defp extract_year_from_date(_), do: nil
 
   defp check_existing_items(results, media_type) do
+    require Logger
     # Extract TMDB IDs from search results (provider_id is a string)
     tmdb_ids =
       results
@@ -388,15 +389,29 @@ defmodule MydiaWeb.AddMediaLive.Index do
       |> Enum.reject(&is_nil/1)
       |> Enum.map(&String.to_integer/1)
 
+    Logger.info(
+      "check_existing_items for media_type=#{media_type}: TMDB IDs: #{inspect(tmdb_ids)}"
+    )
+
     if tmdb_ids == [] do
       %{}
     else
       # Query for existing media items with these TMDB IDs
       type_string = if media_type == :movie, do: "movie", else: "tv_show"
 
-      Media.list_media_items(type: type_string)
-      |> Enum.filter(&(&1.tmdb_id in tmdb_ids))
-      |> Map.new(&{&1.tmdb_id, &1.id})
+      existing_items = Media.list_media_items(type: type_string)
+
+      Logger.info(
+        "check_existing_items: Found #{length(existing_items)} items of type '#{type_string}' in library"
+      )
+
+      filtered_items = Enum.filter(existing_items, &(&1.tmdb_id in tmdb_ids))
+      Logger.info("check_existing_items: #{length(filtered_items)} items match search results")
+
+      result_map = Map.new(filtered_items, &{&1.tmdb_id, &1.id})
+      Logger.info("check_existing_items: result map: #{inspect(result_map)}")
+
+      result_map
     end
   end
 
