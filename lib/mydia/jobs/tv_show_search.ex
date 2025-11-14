@@ -819,9 +819,10 @@ defmodule Mydia.Jobs.TVShowSearch do
 
   defp build_ranking_options(episode, args) do
     # Start with base options - TV shows typically have smaller file sizes than movies
+    # Oban job args use string keys (JSON storage)
     base_opts = [
-      min_seeders: Map.get(args, "min_seeders", 3),
-      size_range: Map.get(args, "size_range", {100, 5_000})
+      min_seeders: args["min_seeders"] || 3,
+      size_range: args["size_range"] || {100, 5_000}
     ]
 
     # Add quality profile preferences if available
@@ -836,16 +837,17 @@ defmodule Mydia.Jobs.TVShowSearch do
 
     # Add any custom blocked/preferred tags from args
     opts_with_quality
-    |> maybe_add_option(:blocked_tags, Map.get(args, "blocked_tags"))
-    |> maybe_add_option(:preferred_tags, Map.get(args, "preferred_tags"))
+    |> maybe_add_option(:blocked_tags, args["blocked_tags"])
+    |> maybe_add_option(:preferred_tags, args["preferred_tags"])
   end
 
   defp build_ranking_options_for_season(media_item, _episodes, args) do
     # Season packs are typically much larger than individual episodes
     # A full season in HD can be 10-50GB depending on episode count and quality
+    # Oban job args use string keys (JSON storage)
     base_opts = [
-      min_seeders: Map.get(args, "min_seeders", 3),
-      size_range: Map.get(args, "size_range", {2_000, 100_000})
+      min_seeders: args["min_seeders"] || 3,
+      size_range: args["size_range"] || {2_000, 100_000}
     ]
 
     # Load quality profile from media_item
@@ -858,7 +860,7 @@ defmodule Mydia.Jobs.TVShowSearch do
           quality_profile =
             media_item
             |> Repo.preload(:quality_profile)
-            |> Map.get(:quality_profile)
+            |> then(& &1.quality_profile)
 
           case quality_profile do
             nil -> base_opts
@@ -868,8 +870,8 @@ defmodule Mydia.Jobs.TVShowSearch do
 
     # Add any custom blocked/preferred tags from args
     opts_with_quality
-    |> maybe_add_option(:blocked_tags, Map.get(args, "blocked_tags"))
-    |> maybe_add_option(:preferred_tags, Map.get(args, "preferred_tags"))
+    |> maybe_add_option(:blocked_tags, args["blocked_tags"])
+    |> maybe_add_option(:preferred_tags, args["preferred_tags"])
   end
 
   defp load_quality_profile(%Episode{media_item: media_item}) do
@@ -880,13 +882,14 @@ defmodule Mydia.Jobs.TVShowSearch do
       _id ->
         media_item
         |> Repo.preload(:quality_profile)
-        |> Map.get(:quality_profile)
+        |> then(& &1.quality_profile)
     end
   end
 
   defp build_quality_options(quality_profile) do
     # Extract preferred qualities from quality profile
-    case Map.get(quality_profile, :allowed_qualities) do
+    # Quality profile is a struct, use field access
+    case quality_profile.allowed_qualities do
       nil -> []
       qualities when is_list(qualities) -> [preferred_qualities: qualities]
       _ -> []

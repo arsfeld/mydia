@@ -81,54 +81,68 @@ defmodule MydiaWeb.AdminUsersLive.Index do
   end
 
   def handle_event("submit_create", %{"create" => create_params}, socket) do
-    # Determine password based on mode
-    {password, attrs} =
-      case socket.assigns.password_mode do
-        "manual" ->
-          # Use manually entered password
-          attrs = %{
-            username: create_params["username"],
-            email: create_params["email"],
-            password: create_params["password"],
-            password_confirmation: create_params["password_confirmation"],
-            role: create_params["role"] || "guest"
-          }
+    # First validate the form params through changeset
+    changeset = validate_create(create_params, socket.assigns.password_mode)
 
-          {nil, attrs}
+    if changeset.valid? do
+      # Extract validated data from changeset
+      validated_data = Ecto.Changeset.apply_changes(changeset)
 
-        "auto" ->
-          # Generate a random password
-          password = generate_password()
+      # Determine password based on mode
+      {password, attrs} =
+        case socket.assigns.password_mode do
+          "manual" ->
+            # Use manually entered password from validated data
+            attrs = %{
+              username: validated_data.username,
+              email: validated_data.email,
+              password: validated_data.password,
+              password_confirmation: validated_data.password_confirmation,
+              role: validated_data.role || "guest"
+            }
 
-          attrs = %{
-            username: create_params["username"],
-            email: create_params["email"],
-            password: password,
-            role: create_params["role"] || "guest"
-          }
+            {nil, attrs}
 
-          {password, attrs}
-      end
+          "auto" ->
+            # Generate a random password
+            password = generate_password()
 
-    case Accounts.create_user(attrs) do
-      {:ok, _user} ->
-        {:noreply,
-         socket
-         |> assign(:generated_password, password)
-         |> put_flash(
-           :info,
-           if(password,
-             do: "User created! Save the password shown below.",
-             else: "User created successfully."
+            attrs = %{
+              username: validated_data.username,
+              email: validated_data.email,
+              password: password,
+              role: validated_data.role || "guest"
+            }
+
+            {password, attrs}
+        end
+
+      case Accounts.create_user(attrs) do
+        {:ok, _user} ->
+          {:noreply,
+           socket
+           |> assign(:generated_password, password)
+           |> put_flash(
+             :info,
+             if(password,
+               do: "User created! Save the password shown below.",
+               else: "User created successfully."
+             )
            )
-         )
-         |> load_users()}
+           |> load_users()}
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to create user")
-         |> assign(:create_form, to_form(changeset, as: :create))}
+        {:error, changeset} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "Failed to create user")
+           |> assign(:create_form, to_form(changeset, as: :create))}
+      end
+    else
+      # Validation failed - show errors
+      {:noreply,
+       socket
+       |> put_flash(:error, "Please fix the errors below")
+       |> assign(:create_form, to_form(changeset, as: :create))}
     end
   end
 
@@ -156,21 +170,31 @@ defmodule MydiaWeb.AdminUsersLive.Index do
 
   def handle_event("submit_edit_role", %{"edit_role" => role_params}, socket) do
     user = socket.assigns.selected_user
+    changeset = validate_edit_role(role_params)
 
-    case Accounts.update_user(user, %{role: role_params["role"]}) do
-      {:ok, _updated_user} ->
-        {:noreply,
-         socket
-         |> assign(:show_edit_role_modal, false)
-         |> assign(:selected_user, nil)
-         |> put_flash(:info, "User role updated successfully.")
-         |> load_users()}
+    if changeset.valid? do
+      validated_data = Ecto.Changeset.apply_changes(changeset)
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to update user role")
-         |> assign(:edit_role_form, to_form(changeset, as: :edit_role))}
+      case Accounts.update_user(user, %{role: validated_data.role}) do
+        {:ok, _updated_user} ->
+          {:noreply,
+           socket
+           |> assign(:show_edit_role_modal, false)
+           |> assign(:selected_user, nil)
+           |> put_flash(:info, "User role updated successfully.")
+           |> load_users()}
+
+        {:error, changeset} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "Failed to update user role")
+           |> assign(:edit_role_form, to_form(changeset, as: :edit_role))}
+      end
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "Please fix the errors below")
+       |> assign(:edit_role_form, to_form(changeset, as: :edit_role))}
     end
   end
 
@@ -226,42 +250,52 @@ defmodule MydiaWeb.AdminUsersLive.Index do
     user = socket.assigns.selected_user
 
     # Determine password based on mode
-    {password, password_attrs} =
+    {password, password_value, changeset} =
       case socket.assigns.password_mode_reset do
         "manual" ->
           reset_params = params["reset_password"] || %{}
+          changeset = validate_reset_password(reset_params)
 
-          attrs = %{
-            password: reset_params["password"],
-            password_confirmation: reset_params["password_confirmation"]
-          }
-
-          {nil, attrs}
+          if changeset.valid? do
+            validated_data = Ecto.Changeset.apply_changes(changeset)
+            {nil, validated_data.password, changeset}
+          else
+            {nil, nil, changeset}
+          end
 
         "auto" ->
           password = generate_password()
-          {password, %{password: password}}
+          # Create a valid changeset for auto mode (no validation needed)
+          changeset = validate_reset_password(%{})
+          {password, password, changeset}
       end
 
-    case Accounts.update_password(user, password_attrs[:password] || password) do
-      {:ok, _updated_user} ->
-        {:noreply,
-         socket
-         |> assign(:generated_password, password)
-         |> assign(:password_reset_success, true)
-         |> put_flash(
-           :info,
-           if(password,
-             do: "Password reset! Save the password shown below.",
-             else: "Password reset successfully."
-           )
-         )}
+    if changeset.valid? do
+      case Accounts.update_password(user, password_value) do
+        {:ok, _updated_user} ->
+          {:noreply,
+           socket
+           |> assign(:generated_password, password)
+           |> assign(:password_reset_success, true)
+           |> put_flash(
+             :info,
+             if(password,
+               do: "Password reset! Save the password shown below.",
+               else: "Password reset successfully."
+             )
+           )}
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to reset password")
-         |> assign(:reset_password_form, to_form(changeset, as: :reset_password))}
+        {:error, changeset} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "Failed to reset password")
+           |> assign(:reset_password_form, to_form(changeset, as: :reset_password))}
+      end
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "Please fix the errors below")
+       |> assign(:reset_password_form, to_form(changeset, as: :reset_password))}
     end
   end
 

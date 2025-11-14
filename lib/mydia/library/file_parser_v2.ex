@@ -38,6 +38,8 @@ defmodule Mydia.Library.FileParser.V2 do
 
   require Logger
 
+  alias Mydia.Library.Structs.ParsedFileInfo
+
   @type media_type :: :movie | :tv_show | :unknown
   @type quality_info :: %{
           resolution: String.t() | nil,
@@ -47,17 +49,8 @@ defmodule Mydia.Library.FileParser.V2 do
           audio: String.t() | nil
         }
 
-  @type parse_result :: %{
-          type: media_type(),
-          title: String.t() | nil,
-          year: integer() | nil,
-          season: integer() | nil,
-          episodes: [integer()] | nil,
-          quality: quality_info(),
-          release_group: String.t() | nil,
-          confidence: float(),
-          original_filename: String.t()
-        }
+  # Keep backward-compatible type alias
+  @type parse_result :: ParsedFileInfo.t()
 
   # Regex patterns from Phase 1
   # Order matters: match longer patterns first (DTS-HD before DTS, AAC-LC before AAC, DDP before DD)
@@ -578,12 +571,13 @@ defmodule Mydia.Library.FileParser.V2 do
   ## Result Building
 
   defp build_result(metadata, title, original_filename, opts) do
-    type = Map.get(metadata, :type, :unknown)
-    year = Map.get(metadata, :year)
-    season = Map.get(metadata, :season)
-    episodes = Map.get(metadata, :episodes)
-    quality = Map.get(metadata, :quality, %{})
-    release_group = Map.get(metadata, :release_group)
+    # Extract fields with defaults (no Map.get - direct access with defaults)
+    type = metadata[:type] || :unknown
+    year = metadata[:year]
+    season = metadata[:season]
+    episodes = metadata[:episodes]
+    quality = metadata[:quality] || %{}
+    release_group = metadata[:release_group]
 
     # Determine media type if not already set
     type =
@@ -609,7 +603,8 @@ defmodule Mydia.Library.FileParser.V2 do
         quality
       end
 
-    %{
+    # Return a struct instead of a plain map
+    %ParsedFileInfo{
       type: type,
       title: title,
       year: year,

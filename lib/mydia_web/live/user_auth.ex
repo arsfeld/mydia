@@ -33,15 +33,17 @@ defmodule MydiaWeb.Live.UserAuth do
   def on_mount(:ensure_authenticated, _params, session, socket) do
     socket = mount_current_user(socket, session)
 
-    if socket.assigns[:current_user] do
-      {:cont, socket}
-    else
-      socket =
-        socket
-        |> put_flash(:error, "You must be logged in to access this page")
-        |> redirect(to: "/auth/login")
+    case socket.assigns do
+      %{current_user: %Mydia.Accounts.User{}} ->
+        {:cont, socket}
 
-      {:halt, socket}
+      _ ->
+        socket =
+          socket
+          |> put_flash(:error, "You must be logged in to access this page")
+          |> redirect(to: "/auth/login")
+
+        {:halt, socket}
     end
   end
 
@@ -52,15 +54,26 @@ defmodule MydiaWeb.Live.UserAuth do
   def on_mount({:ensure_role, required_role}, _params, session, socket) do
     socket = mount_current_user(socket, session)
 
-    if socket.assigns[:current_user] && has_role?(socket.assigns.current_user, required_role) do
-      {:cont, socket}
-    else
-      socket =
-        socket
-        |> put_flash(:error, "You do not have permission to access this page")
-        |> redirect(to: "/")
+    case socket.assigns do
+      %{current_user: %Mydia.Accounts.User{} = user} ->
+        if has_role?(user, required_role) do
+          {:cont, socket}
+        else
+          socket =
+            socket
+            |> put_flash(:error, "You do not have permission to access this page")
+            |> redirect(to: "/")
 
-      {:halt, socket}
+          {:halt, socket}
+        end
+
+      _ ->
+        socket =
+          socket
+          |> put_flash(:error, "You do not have permission to access this page")
+          |> redirect(to: "/")
+
+        {:halt, socket}
     end
   end
 
@@ -68,10 +81,16 @@ defmodule MydiaWeb.Live.UserAuth do
     # Load navigation counts once per LiveView mount
     # These are used by the layout component for sidebar badges
     pending_requests_count =
-      if Authorization.can_manage_requests?(socket.assigns[:current_user]) do
-        MediaRequests.count_pending_requests()
-      else
-        0
+      case Map.fetch(socket.assigns, :current_user) do
+        {:ok, user} when not is_nil(user) ->
+          if Authorization.can_manage_requests?(user) do
+            MediaRequests.count_pending_requests()
+          else
+            0
+          end
+
+        _ ->
+          0
       end
 
     socket =

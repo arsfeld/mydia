@@ -21,7 +21,8 @@ defmodule Mydia.Jobs.LibraryScanner do
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
     start_time = System.monotonic_time(:millisecond)
-    library_path_id = Map.get(args, "library_path_id")
+    # Oban job args use string keys (JSON) - optional field with default
+    library_path_id = args["library_path_id"]
 
     result =
       case library_path_id do
@@ -794,8 +795,8 @@ defmodule Mydia.Jobs.LibraryScanner do
 
   # Creates episodes from TMDB season data
   defp create_episodes_from_season(media_item, season_data) do
-    episodes = Map.get(season_data, :episodes, [])
-    season_number = Map.get(season_data, :season_number)
+    episodes = season_data.episodes || []
+    season_number = season_data.season_number
 
     Enum.each(episodes, fn episode_data ->
       # Check if episode already exists

@@ -218,8 +218,8 @@ defmodule Mydia.Library do
 
     # Parse the filename to extract season/episode information
     parsed_info = FileParser.parse(filename)
-    season = Map.get(parsed_info, :season)
-    episode_numbers = Map.get(parsed_info, :episodes)
+    season = parsed_info.season
+    episode_numbers = parsed_info.episodes
 
     if is_integer(season) and is_list(episode_numbers) and length(episode_numbers) > 0 do
       # For multi-episode files, we'll just match to the first episode

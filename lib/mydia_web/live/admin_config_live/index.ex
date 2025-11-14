@@ -43,17 +43,24 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     # Parse the category
     parsed_category = parse_category(category)
 
-    # Process each changed setting
+    # Process each changed setting with validation
     results =
       settings
       |> Enum.map(fn {key, value} ->
-        attrs = %{
-          key: key,
-          value: value,
-          category: parsed_category
-        }
+        # Validate each setting through a changeset
+        changeset =
+          validate_config_setting(%{
+            key: key,
+            value: value,
+            category: parsed_category
+          })
 
-        upsert_config_setting(attrs)
+        if changeset.valid? do
+          validated_data = Ecto.Changeset.apply_changes(changeset)
+          upsert_config_setting(validated_data)
+        else
+          {:error, changeset}
+        end
       end)
 
     # Check if all updates succeeded
@@ -95,35 +102,44 @@ defmodule MydiaWeb.AdminConfigLive.Index do
         %{"key" => key, "value" => value, "category" => category},
         socket
       ) do
-    # Handle boolean toggle
+    # Handle boolean toggle with validation
     parsed_category = parse_category(category)
 
-    attrs = %{
-      key: key,
-      value: to_string(value),
-      category: parsed_category
-    }
+    changeset =
+      validate_config_setting(%{
+        key: key,
+        value: to_string(value),
+        category: parsed_category
+      })
 
-    case upsert_config_setting(attrs) do
-      {:ok, _setting} ->
-        {:noreply,
-         socket
-         |> load_configuration_data()}
+    if changeset.valid? do
+      validated_data = Ecto.Changeset.apply_changes(changeset)
 
-      {:error, changeset} ->
-        MydiaLogger.log_error(:liveview, "Failed to toggle setting",
-          error: changeset,
-          operation: :update_setting,
-          category: parsed_category,
-          setting_key: key,
-          user_id: socket.assigns.current_user.id
-        )
+      case upsert_config_setting(validated_data) do
+        {:ok, _setting} ->
+          {:noreply,
+           socket
+           |> load_configuration_data()}
 
-        error_msg = MydiaLogger.user_error_message(:update_setting, changeset)
+        {:error, changeset} ->
+          MydiaLogger.log_error(:liveview, "Failed to toggle setting",
+            error: changeset,
+            operation: :update_setting,
+            category: parsed_category,
+            setting_key: key,
+            user_id: socket.assigns.current_user.id
+          )
 
-        {:noreply,
-         socket
-         |> put_flash(:error, error_msg)}
+          error_msg = MydiaLogger.user_error_message(:update_setting, changeset)
+
+          {:noreply,
+           socket
+           |> put_flash(:error, error_msg)}
+      end
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "Invalid setting value")}
     end
   end
 
@@ -642,48 +658,57 @@ defmodule MydiaWeb.AdminConfigLive.Index do
 
   @impl true
   def handle_event("save_library_path", %{"library_path" => params}, socket) do
-    # Validate directory exists
-    path = params["path"]
+    # First validate through changeset
+    library_path =
+      case socket.assigns.library_path_mode do
+        :new -> %LibraryPath{}
+        :edit -> socket.assigns.editing_library_path
+      end
 
-    case validate_directory(path) do
-      :ok ->
-        result =
-          case socket.assigns.library_path_mode do
-            :new ->
-              Settings.create_library_path(params)
+    changeset = LibraryPath.changeset(library_path, params)
 
-            :edit ->
-              Settings.update_library_path(socket.assigns.editing_library_path, params)
+    if changeset.valid? do
+      validated_data = Ecto.Changeset.apply_changes(changeset)
+
+      # Validate directory exists using validated data
+      case validate_directory(validated_data.path) do
+        :ok ->
+          result =
+            case socket.assigns.library_path_mode do
+              :new ->
+                Settings.create_library_path(params)
+
+              :edit ->
+                Settings.update_library_path(socket.assigns.editing_library_path, params)
+            end
+
+          case result do
+            {:ok, _path} ->
+              {:noreply,
+               socket
+               |> assign(:show_library_path_modal, false)
+               |> put_flash(:info, "Library path saved successfully")
+               |> load_configuration_data()}
+
+            {:error, %Ecto.Changeset{} = changeset} ->
+              {:noreply, assign(socket, :library_path_form, to_form(changeset))}
           end
 
-        case result do
-          {:ok, _path} ->
-            {:noreply,
-             socket
-             |> assign(:show_library_path_modal, false)
-             |> put_flash(:info, "Library path saved successfully")
-             |> load_configuration_data()}
+        {:error, reason} ->
+          changeset =
+            changeset
+            |> Ecto.Changeset.add_error(:path, reason)
 
-          {:error, %Ecto.Changeset{} = changeset} ->
-            {:noreply, assign(socket, :library_path_form, to_form(changeset))}
-        end
-
-      {:error, reason} ->
-        library_path =
-          case socket.assigns.library_path_mode do
-            :new -> %Mydia.Settings.LibraryPath{}
-            :edit -> socket.assigns.editing_library_path
-          end
-
-        changeset =
-          library_path
-          |> Mydia.Settings.LibraryPath.changeset(params)
-          |> Ecto.Changeset.add_error(:path, reason)
-
-        {:noreply,
-         socket
-         |> assign(:library_path_form, to_form(changeset))
-         |> put_flash(:error, "Invalid directory: #{reason}")}
+          {:noreply,
+           socket
+           |> assign(:library_path_form, to_form(changeset))
+           |> put_flash(:error, "Invalid directory: #{reason}")}
+      end
+    else
+      {:noreply,
+       socket
+       |> assign(:library_path_form, to_form(changeset))
+       |> put_flash(:error, "Please fix the validation errors")}
     end
   end
 
@@ -925,13 +950,28 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     end
   end
 
+  defp validate_config_setting(attrs) do
+    types = %{
+      key: :string,
+      value: :string,
+      category: :atom
+    }
+
+    {%{}, types}
+    |> Ecto.Changeset.cast(attrs, Map.keys(types))
+    |> Ecto.Changeset.validate_required([:key, :value, :category])
+  end
+
   defp upsert_config_setting(attrs) do
-    case Settings.get_config_setting_by_key(attrs.key) do
+    # attrs is now a map from apply_changes, convert to map with atom keys if needed
+    attrs_map = if is_struct(attrs), do: Map.from_struct(attrs), else: attrs
+
+    case Settings.get_config_setting_by_key(attrs_map.key) do
       nil ->
-        Settings.create_config_setting(attrs)
+        Settings.create_config_setting(attrs_map)
 
       existing ->
-        Settings.update_config_setting(existing, attrs)
+        Settings.update_config_setting(existing, attrs_map)
     end
   end
 

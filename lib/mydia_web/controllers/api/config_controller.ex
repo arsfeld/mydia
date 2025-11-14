@@ -98,14 +98,14 @@ defmodule MydiaWeb.Api.ConfigController do
     - 422: Validation error
   """
   def update(conn, %{"key" => key} = params) do
-    value = params["value"]
-    description = params["description"]
+    # Validate params through changeset
+    changeset = validate_update_params(params)
 
     cond do
-      is_nil(value) ->
+      not changeset.valid? ->
         conn
-        |> put_status(:bad_request)
-        |> json(%{error: "value is required"})
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: "Validation failed", details: format_changeset_errors(changeset)})
 
       is_env_var_setting?(key) ->
         conn
@@ -117,7 +117,8 @@ defmodule MydiaWeb.Api.ConfigController do
         })
 
       true ->
-        perform_update(conn, key, value, description)
+        validated_data = Ecto.Changeset.apply_changes(changeset)
+        perform_update(conn, key, validated_data.value, validated_data.description)
     end
   end
 
@@ -217,17 +218,24 @@ defmodule MydiaWeb.Api.ConfigController do
     path = parse_config_key(key)
     category = determine_category(path)
 
+    # Build attrs from validated data
+    base_attrs = %{
+      key: key,
+      value: to_string(value),
+      category: category
+    }
+
+    attrs =
+      if description do
+        Map.put(base_attrs, :description, description)
+      else
+        base_attrs
+      end
+
     # Get or create the config setting
     case Settings.get_config_setting_by_key(key) do
       nil ->
         # Create new setting
-        attrs = %{
-          key: key,
-          value: to_string(value),
-          category: category,
-          description: description
-        }
-
         case Settings.create_config_setting(attrs) do
           {:ok, setting} ->
             Logger.info("Configuration setting created", key: key, value: value)
@@ -244,19 +252,10 @@ defmodule MydiaWeb.Api.ConfigController do
         end
 
       setting ->
-        # Update existing setting
-        attrs = %{
-          value: to_string(value)
-        }
+        # Update existing setting (only value and optionally description)
+        update_attrs = Map.take(attrs, [:value, :description])
 
-        attrs =
-          if description do
-            Map.put(attrs, :description, description)
-          else
-            attrs
-          end
-
-        case Settings.update_config_setting(setting, attrs) do
+        case Settings.update_config_setting(setting, update_attrs) do
           {:ok, updated_setting} ->
             Logger.info("Configuration setting updated", key: key, value: value)
 
@@ -436,6 +435,18 @@ defmodule MydiaWeb.Api.ConfigController do
       updated_at: setting.updated_at,
       updated_by_id: setting.updated_by_id
     }
+  end
+
+  defp validate_update_params(params) do
+    types = %{
+      key: :string,
+      value: :string,
+      description: :string
+    }
+
+    {%{}, types}
+    |> Ecto.Changeset.cast(params, [:key, :value, :description])
+    |> Ecto.Changeset.validate_required([:key, :value])
   end
 
   defp format_changeset_errors(changeset) do

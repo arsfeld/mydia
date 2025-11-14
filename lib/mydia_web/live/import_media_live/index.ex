@@ -263,38 +263,41 @@ defmodule MydiaWeb.ImportMediaLive.Index do
     if index != nil do
       matched_file = Enum.at(socket.assigns.matched_files, index)
 
-      # Parse and validate the form data
-      with {:ok, season} <- parse_optional_int(form_params["season"]),
-           {:ok, episodes} <- parse_episode_list(form_params["episodes"]) do
+      # Validate form data through changeset
+      changeset = validate_edit_form(form_params)
+
+      if changeset.valid? do
+        validated_data = Ecto.Changeset.apply_changes(changeset)
+
         # Build updated or new match result
         updated_match =
           if matched_file.match_result do
             # Update existing match
             Map.merge(matched_file.match_result, %{
-              title: form_params["title"],
-              provider_id: form_params["provider_id"],
-              year: parse_optional_int_value(form_params["year"]),
+              title: validated_data.title,
+              provider_id: validated_data.provider_id,
+              year: validated_data.year,
               manually_edited: true,
               parsed_info:
                 Map.merge(matched_file.match_result.parsed_info, %{
-                  season: season,
-                  episodes: episodes,
-                  type: String.to_atom(form_params["type"])
+                  season: validated_data.season,
+                  episodes: validated_data.episodes,
+                  type: validated_data.type
                 })
             })
           else
             # Create new match for previously unmatched file
             %{
-              title: form_params["title"],
-              provider_id: form_params["provider_id"],
-              year: parse_optional_int_value(form_params["year"]),
+              title: validated_data.title,
+              provider_id: validated_data.provider_id,
+              year: validated_data.year,
               match_confidence: 1.0,
               manually_edited: true,
               metadata: %{},
               parsed_info: %{
-                season: season,
-                episodes: episodes,
-                type: String.to_atom(form_params["type"])
+                season: validated_data.season,
+                episodes: validated_data.episodes,
+                type: validated_data.type
               }
             }
           end
@@ -336,8 +339,10 @@ defmodule MydiaWeb.ImportMediaLive.Index do
          |> assign(:search_results, [])
          |> put_flash(:info, flash_message)}
       else
-        {:error, message} ->
-          {:noreply, put_flash(socket, :error, message)}
+        {:noreply,
+         socket
+         |> put_flash(:error, "Please fix the validation errors")
+         |> assign(:edit_form, form_params)}
       end
     else
       {:noreply, socket}
@@ -352,27 +357,25 @@ defmodule MydiaWeb.ImportMediaLive.Index do
     perform_search(query, socket)
   end
 
-  def handle_event(
-        "select_search_result",
-        %{"provider_id" => provider_id, "title" => title, "year" => year, "type" => type},
-        socket
-      ) do
-    if socket.assigns.edit_form do
-      # Convert media type from search result format to parsed_info format
-      normalized_type = normalize_media_type_string(type)
+  def handle_event("select_search_result", params, socket) do
+    # Validate search result params
+    changeset = validate_search_result(params)
+
+    if changeset.valid? && socket.assigns.edit_form do
+      validated_data = Ecto.Changeset.apply_changes(changeset)
 
       updated_form =
         socket.assigns.edit_form
-        |> Map.put("title", title)
-        |> Map.put("provider_id", provider_id)
-        |> Map.put("year", year)
-        |> Map.put("type", normalized_type)
+        |> Map.put("title", validated_data.title)
+        |> Map.put("provider_id", validated_data.provider_id)
+        |> Map.put("year", validated_data.year)
+        |> Map.put("type", validated_data.type)
 
       {:noreply,
        socket
        |> assign(:edit_form, updated_form)
        |> assign(:search_results, [])
-       |> assign(:search_query, title)}
+       |> assign(:search_query, validated_data.title)}
     else
       {:noreply, socket}
     end
@@ -843,6 +846,75 @@ defmodule MydiaWeb.ImportMediaLive.Index do
   defp format_error(:permission_denied), do: "Permission denied"
   defp format_error(reason), do: inspect(reason)
 
+  # Validation functions for form data
+  defp validate_edit_form(params) do
+    types = %{
+      title: :string,
+      provider_id: :string,
+      year: :integer,
+      season: :integer,
+      episodes: {:array, :integer},
+      type: :atom
+    }
+
+    {%{}, types}
+    |> Ecto.Changeset.cast(params, [:title, :provider_id, :year, :season, :type])
+    |> cast_episode_list(params["episodes"])
+    |> Ecto.Changeset.validate_required([:title, :type])
+    |> Ecto.Changeset.validate_inclusion(:type, [:movie, :tv_show])
+  end
+
+  defp validate_search_result(params) do
+    types = %{
+      provider_id: :string,
+      title: :string,
+      year: :string,
+      type: :string
+    }
+
+    {%{}, types}
+    |> Ecto.Changeset.cast(params, [:provider_id, :title, :year, :type])
+    |> Ecto.Changeset.validate_required([:provider_id, :title, :type])
+    |> normalize_media_type()
+  end
+
+  defp cast_episode_list(changeset, episodes_param) when is_binary(episodes_param) do
+    case parse_episode_list(episodes_param) do
+      {:ok, episodes} ->
+        Ecto.Changeset.put_change(changeset, :episodes, episodes)
+
+      {:error, _message} ->
+        Ecto.Changeset.add_error(changeset, :episodes, "invalid episode format")
+    end
+  end
+
+  defp cast_episode_list(changeset, _), do: changeset
+
+  defp normalize_media_type(changeset) do
+    case Ecto.Changeset.get_change(changeset, :type) do
+      "tv" ->
+        Ecto.Changeset.put_change(changeset, :type, :tv_show)
+
+      "movie" ->
+        Ecto.Changeset.put_change(changeset, :type, :movie)
+
+      type when is_binary(type) ->
+        case String.to_existing_atom(type) do
+          atom when atom in [:tv_show, :movie] ->
+            Ecto.Changeset.put_change(changeset, :type, atom)
+
+          _ ->
+            Ecto.Changeset.add_error(changeset, :type, "invalid media type")
+        end
+
+      _ ->
+        changeset
+    end
+  rescue
+    ArgumentError ->
+      Ecto.Changeset.add_error(changeset, :type, "invalid media type")
+  end
+
   # Parse helper functions for edit form
   defp parse_optional_int(""), do: {:ok, nil}
 
@@ -855,18 +927,6 @@ defmodule MydiaWeb.ImportMediaLive.Index do
 
   defp parse_optional_int(value) when is_integer(value), do: {:ok, value}
   defp parse_optional_int(nil), do: {:ok, nil}
-
-  defp parse_optional_int_value(""), do: nil
-
-  defp parse_optional_int_value(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} -> int
-      _ -> nil
-    end
-  end
-
-  defp parse_optional_int_value(value) when is_integer(value), do: value
-  defp parse_optional_int_value(nil), do: nil
 
   defp parse_episode_list(""), do: {:ok, []}
 

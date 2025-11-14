@@ -16,7 +16,7 @@
         excluded: [~r"/_build/", ~r"/deps/", ~r"/node_modules/"]
       },
       plugins: [],
-      requires: [],
+      requires: ["lib/credo/check/warning/struct_bracket_access.ex"],
       strict: false,
       parse_timeout: 5000,
       color: true,
@@ -95,7 +95,11 @@
           {Credo.Check.Warning.UnusedRegexOperation, []},
           {Credo.Check.Warning.UnusedStringOperation, []},
           {Credo.Check.Warning.UnusedTupleOperation, []},
-          {Credo.Check.Warning.WrongTestFileExtension, []}
+          {Credo.Check.Warning.WrongTestFileExtension, []},
+
+          ## Type Safety - catch unsafe map/struct access
+          {Credo.Check.Warning.MapGetUnsafePass, []},
+          {Credo.Check.Warning.StructBracketAccess, []}
         ],
         disabled: [
           # Controversial and experimental checks (opt-in, replace `false` with `[]`)
@@ -122,8 +126,8 @@
           {Credo.Check.Refactor.PipeChainStart, []},
           {Credo.Check.Refactor.VariableRebinding, []},
           {Credo.Check.Warning.LazyLogging, []},
-          {Credo.Check.Warning.LeakyEnvironment, []},
-          {Credo.Check.Warning.MapGetUnsafePass, []}
+          {Credo.Check.Warning.LeakyEnvironment, []}
+          # MapGetUnsafePass moved to enabled checks for type safety
         ]
       }
     }

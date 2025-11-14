@@ -13,6 +13,7 @@ defmodule MydiaWeb.Live.Authorization do
   Checks if the current user can create media items.
 
   Returns `:ok` if authorized, or `{:unauthorized, socket}` with an error flash.
+  Raises if current_user is not present in socket assigns.
 
   ## Examples
 
@@ -26,13 +27,17 @@ defmodule MydiaWeb.Live.Authorization do
       end
   """
   def authorize_create_media(socket) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if Authorization.can_create_media?(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, "You do not have permission to add media items")
+          {:unauthorized, socket}
+        end
 
-    if Authorization.can_create_media?(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, "You do not have permission to add media items")
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 
@@ -40,15 +45,20 @@ defmodule MydiaWeb.Live.Authorization do
   Checks if the current user can update media items.
 
   Returns `:ok` if authorized, or `{:unauthorized, socket}` with an error flash.
+  Raises if current_user is not present in socket assigns.
   """
   def authorize_update_media(socket) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if Authorization.can_update_media?(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, "You do not have permission to modify media items")
+          {:unauthorized, socket}
+        end
 
-    if Authorization.can_update_media?(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, "You do not have permission to modify media items")
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 
@@ -56,15 +66,20 @@ defmodule MydiaWeb.Live.Authorization do
   Checks if the current user can delete media items.
 
   Returns `:ok` if authorized, or `{:unauthorized, socket}` with an error flash.
+  Raises if current_user is not present in socket assigns.
   """
   def authorize_delete_media(socket) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if Authorization.can_delete_media?(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, "You do not have permission to delete media items")
+          {:unauthorized, socket}
+        end
 
-    if Authorization.can_delete_media?(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, "You do not have permission to delete media items")
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 
@@ -73,15 +88,20 @@ defmodule MydiaWeb.Live.Authorization do
 
   Only admin and user roles can trigger downloads.
   Returns `:ok` if authorized, or `{:unauthorized, socket}` with an error flash.
+  Raises if current_user is not present in socket assigns.
   """
   def authorize_manage_downloads(socket) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if Authorization.can_update_media?(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, "You do not have permission to manage downloads")
+          {:unauthorized, socket}
+        end
 
-    if Authorization.can_update_media?(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, "You do not have permission to manage downloads")
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 
@@ -90,20 +110,26 @@ defmodule MydiaWeb.Live.Authorization do
 
   Only admin and user roles can import media.
   Returns `:ok` if authorized, or `{:unauthorized, socket}` with an error flash.
+  Raises if current_user is not present in socket assigns.
   """
   def authorize_import_media(socket) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if Authorization.can_create_media?(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, "You do not have permission to import media")
+          {:unauthorized, socket}
+        end
 
-    if Authorization.can_create_media?(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, "You do not have permission to import media")
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 
   @doc """
   Generic authorization check with custom permission function and error message.
+  Raises if current_user is not present in socket assigns.
 
   ## Examples
 
@@ -117,13 +143,17 @@ defmodule MydiaWeb.Live.Authorization do
       end
   """
   def authorize(socket, permission_fn, error_message) when is_function(permission_fn, 1) do
-    user = socket.assigns[:current_user]
+    case Map.fetch(socket.assigns, :current_user) do
+      {:ok, user} when not is_nil(user) ->
+        if permission_fn.(user) do
+          :ok
+        else
+          socket = put_flash(socket, :error, error_message)
+          {:unauthorized, socket}
+        end
 
-    if permission_fn.(user) do
-      :ok
-    else
-      socket = put_flash(socket, :error, error_message)
-      {:unauthorized, socket}
+      _ ->
+        raise "current_user is required in socket assigns for authorization"
     end
   end
 end
