@@ -344,11 +344,11 @@ defmodule MydiaWeb.AddMediaLive.Index do
 
     %{
       type: type_string,
-      title: metadata[:title] || metadata[:name],
-      original_title: metadata[:original_title] || metadata[:original_name],
+      title: metadata.title,
+      original_title: metadata.original_title,
       year: extract_year(metadata),
-      tmdb_id: metadata[:id],
-      imdb_id: metadata[:imdb_id],
+      tmdb_id: metadata.id,
+      imdb_id: metadata.imdb_id,
       metadata: metadata,
       monitored: config.monitored
     }
@@ -357,11 +357,11 @@ defmodule MydiaWeb.AddMediaLive.Index do
   defp extract_year(metadata) do
     # First check if year is already in metadata
     cond do
-      metadata[:year] ->
-        metadata[:year]
+      metadata.year ->
+        metadata.year
 
-      metadata[:release_date] || metadata[:first_air_date] ->
-        date_value = metadata[:release_date] || metadata[:first_air_date]
+      metadata.release_date || metadata.first_air_date ->
+        date_value = metadata.release_date || metadata.first_air_date
         extract_year_from_date(date_value)
 
       true ->
@@ -384,7 +384,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
     # Extract TMDB IDs from search results (provider_id is a string)
     tmdb_ids =
       results
-      |> Enum.map(& &1[:provider_id])
+      |> Enum.map(& &1.provider_id)
       |> Enum.reject(&is_nil/1)
       |> Enum.map(&String.to_integer/1)
 
@@ -404,7 +404,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
     season_monitoring = config.season_monitoring || "all"
 
     # Get seasons from metadata
-    seasons = metadata[:seasons] || []
+    seasons = metadata.seasons || []
 
     # Determine which seasons to monitor
     seasons_to_monitor =
@@ -449,15 +449,15 @@ defmodule MydiaWeb.AddMediaLive.Index do
            season[:season_number]
          ) do
       {:ok, season_data} ->
-        episodes = season_data[:episodes] || []
+        episodes = season_data.episodes || []
 
         Enum.each(episodes, fn episode ->
           Media.create_episode(%{
             media_item_id: media_item.id,
-            season_number: episode[:season_number],
-            episode_number: episode[:episode_number],
-            title: episode[:name],
-            air_date: parse_air_date(episode[:air_date]),
+            season_number: episode.season_number,
+            episode_number: episode.episode_number,
+            title: episode.name,
+            air_date: parse_air_date(episode.air_date),
             metadata: episode,
             monitored: true
           })
@@ -496,7 +496,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
   end
 
   defp get_poster_url(result) do
-    case result[:poster_path] do
+    case result.poster_path do
       nil -> "/images/no-poster.jpg"
       path -> "https://image.tmdb.org/t/p/w500#{path}"
     end
@@ -505,7 +505,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
   defp format_year(nil), do: "N/A"
 
   defp format_year(result) do
-    date_str = result[:release_date] || result[:first_air_date]
+    date_str = result.release_date || result.first_air_date
 
     case date_str do
       nil ->

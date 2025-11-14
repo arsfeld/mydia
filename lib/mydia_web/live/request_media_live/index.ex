@@ -84,7 +84,7 @@ defmodule MydiaWeb.RequestMediaLive.Index do
           {:noreply,
            socket
            |> assign(:show_request_modal, false)
-           |> assign(:requested_items, MapSet.put(socket.assigns.requested_items, result[:id]))
+           |> assign(:requested_items, MapSet.put(socket.assigns.requested_items, result.id))
            |> put_flash(:info, "Request submitted successfully! An admin will review it soon.")}
 
         {:error, :duplicate_media} ->
@@ -171,11 +171,11 @@ defmodule MydiaWeb.RequestMediaLive.Index do
 
     %{
       media_type: media_type_string,
-      title: result[:title] || result[:name],
-      original_title: result[:original_title] || result[:original_name],
+      title: result.title || result.name,
+      original_title: result.original_title || result.original_name,
       year: extract_year(result),
-      tmdb_id: result[:id],
-      imdb_id: result[:imdb_id],
+      tmdb_id: result.id,
+      imdb_id: result.imdb_id,
       requester_notes: params["requester_notes"],
       requester_id: assigns.current_user.id
     }
@@ -183,11 +183,11 @@ defmodule MydiaWeb.RequestMediaLive.Index do
 
   defp extract_year(metadata) do
     cond do
-      metadata[:year] ->
-        metadata[:year]
+      metadata.year ->
+        metadata.year
 
-      metadata[:release_date] || metadata[:first_air_date] ->
-        date_value = metadata[:release_date] || metadata[:first_air_date]
+      metadata.release_date || metadata.first_air_date ->
+        date_value = metadata.release_date || metadata.first_air_date
         extract_year_from_date(date_value)
 
       true ->
@@ -207,7 +207,7 @@ defmodule MydiaWeb.RequestMediaLive.Index do
   defp extract_year_from_date(_), do: nil
 
   defp get_poster_url(result) do
-    case result[:poster_path] do
+    case result.poster_path do
       nil -> "/images/no-poster.jpg"
       path -> "https://image.tmdb.org/t/p/w500#{path}"
     end
@@ -216,7 +216,7 @@ defmodule MydiaWeb.RequestMediaLive.Index do
   defp format_year(nil), do: "N/A"
 
   defp format_year(result) do
-    date_str = result[:release_date] || result[:first_air_date]
+    date_str = result.release_date || result.first_air_date
 
     case date_str do
       nil ->

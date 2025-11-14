@@ -209,7 +209,7 @@ defmodule MydiaWeb.DashboardLive.Index do
     Enum.map(items, fn item ->
       # Convert provider_id to integer for map lookup
       tmdb_id =
-        case item[:provider_id] do
+        case item.provider_id do
           id when is_integer(id) -> id
           id when is_binary(id) -> String.to_integer(id)
           nil -> nil
@@ -230,7 +230,7 @@ defmodule MydiaWeb.DashboardLive.Index do
 
     # Extract provider_id and convert to integer for tmdb_id
     tmdb_id =
-      case metadata["provider_id"] || metadata[:provider_id] do
+      case metadata.provider_id do
         nil -> nil
         id when is_integer(id) -> id
         id when is_binary(id) -> String.to_integer(id)
@@ -238,13 +238,11 @@ defmodule MydiaWeb.DashboardLive.Index do
 
     %{
       type: type_string,
-      title: metadata[:title] || metadata[:name] || metadata["title"] || metadata["name"],
-      original_title:
-        metadata[:original_title] || metadata[:original_name] || metadata["original_title"] ||
-          metadata["original_name"],
+      title: metadata.title,
+      original_title: metadata.original_title,
       year: extract_year(metadata),
       tmdb_id: tmdb_id,
-      imdb_id: metadata[:imdb_id] || metadata["imdb_id"],
+      imdb_id: metadata.imdb_id,
       metadata: metadata,
       monitored: true
     }
@@ -252,11 +250,11 @@ defmodule MydiaWeb.DashboardLive.Index do
 
   defp extract_year(metadata) do
     cond do
-      metadata[:year] ->
-        metadata[:year]
+      metadata.year ->
+        metadata.year
 
-      metadata[:release_date] || metadata[:first_air_date] ->
-        date_value = metadata[:release_date] || metadata[:first_air_date]
+      metadata.release_date || metadata.first_air_date ->
+        date_value = metadata.release_date || metadata.first_air_date
         extract_year_from_date(date_value)
 
       true ->
@@ -277,7 +275,7 @@ defmodule MydiaWeb.DashboardLive.Index do
 
   defp create_episodes_for_media(media_item, metadata) do
     # Get seasons from metadata
-    seasons = metadata[:seasons] || []
+    seasons = metadata.seasons || []
 
     # Create episodes for all seasons
     Enum.each(seasons, fn season ->
@@ -294,15 +292,15 @@ defmodule MydiaWeb.DashboardLive.Index do
            season[:season_number]
          ) do
       {:ok, season_data} ->
-        episodes = season_data[:episodes] || []
+        episodes = season_data.episodes || []
 
         Enum.each(episodes, fn episode ->
           Media.create_episode(%{
             media_item_id: media_item.id,
-            season_number: episode[:season_number],
-            episode_number: episode[:episode_number],
-            title: episode[:name],
-            air_date: parse_air_date(episode[:air_date]),
+            season_number: episode.season_number,
+            episode_number: episode.episode_number,
+            title: episode.name,
+            air_date: parse_air_date(episode.air_date),
             metadata: episode,
             monitored: true
           })
