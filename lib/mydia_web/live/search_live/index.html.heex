@@ -16,33 +16,31 @@
     </div>
 
     <%!-- Search Bar --%>
-    <div class="card bg-base-100 shadow-lg mb-6">
-      <div class="card-body">
-        <form phx-submit="search" phx-change="search" class="flex gap-4">
-          <div class="flex-1 relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <.icon name="hero-magnifying-glass" class="w-6 h-6 text-base-content/50" />
-            </div>
-            <.input
-              type="text"
-              name="search"
-              value={@search_query}
-              placeholder="Search for movies, TV shows, or specific releases..."
-              phx-debounce="500"
-              class="input input-bordered input-lg w-full pl-12"
-            />
-          </div>
-        </form>
-
-        <%!-- Quick help text --%>
-        <%= if @search_query == "" && !@searching do %>
-          <div class="text-sm text-base-content/60 mt-2">
-            <.icon name="hero-information-circle" class="w-4 h-4 inline" />
-            Try searching for "Breaking Bad", "The Matrix", or specific release names
-          </div>
-        <% end %>
+    <form phx-submit="search" id="indexer-search-form" class="mb-6">
+      <div class="join w-full">
+        <.input
+          type="text"
+          name="search"
+          value={@search_query}
+          placeholder="Search for movies, TV shows, or specific releases..."
+          class="input input-bordered w-full join-item"
+        />
+        <button type="submit" class="btn btn-primary join-item" disabled={@searching}>
+          <%= if @searching do %>
+            <span class="loading loading-spinner loading-sm"></span> Searching...
+          <% else %>
+            Search
+          <% end %>
+        </button>
       </div>
-    </div>
+      <%!-- Quick help text --%>
+      <%= if @search_query == "" && !@searching do %>
+        <div class="text-sm text-base-content/60 mt-2">
+          <.icon name="hero-information-circle" class="w-4 h-4 inline" />
+          Try searching for "Breaking Bad", "The Matrix", or specific release names
+        </div>
+      <% end %>
+    </form>
 
     <%!-- Filters and Sort --%>
     <%= if @search_query != "" || @searching do %>

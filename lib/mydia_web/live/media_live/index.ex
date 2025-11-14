@@ -491,10 +491,28 @@ defmodule MydiaWeb.MediaLive.Index do
     query_lower = String.downcase(query)
 
     Enum.filter(items, fn item ->
+      # Match against title
       String.contains?(String.downcase(item.title), query_lower) or
+        # Match against original title
         (item.original_title &&
-           String.contains?(String.downcase(item.original_title), query_lower))
+           String.contains?(String.downcase(item.original_title), query_lower)) or
+        # Match against year (convert to string for matching)
+        (item.year && String.contains?(to_string(item.year), query_lower)) or
+        # Match against overview in metadata
+        match_metadata_overview?(item.metadata, query_lower)
     end)
+  end
+
+  defp match_metadata_overview?(nil, _query), do: false
+
+  defp match_metadata_overview?(metadata, query) do
+    case metadata do
+      %{"overview" => overview} when is_binary(overview) ->
+        String.contains?(String.downcase(overview), query)
+
+      _ ->
+        false
+    end
   end
 
   defp apply_quality_filter(items, nil), do: items

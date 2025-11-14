@@ -27,7 +27,7 @@
         Quick Add Settings
       </div>
       <div class="collapse-content">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <%!-- Root Folder --%>
           <div class="form-control">
             <label class="label py-1">
@@ -86,25 +86,6 @@
               </span>
             </div>
           </div>
-          <%!-- Search on Add --%>
-          <div class="form-control">
-            <label class="label py-1">
-              <span class="label-text text-xs">Search on Add</span>
-            </label>
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                class="toggle toggle-primary toggle-sm"
-                checked={@toolbar_search_on_add}
-                phx-click="update_toolbar"
-                phx-value-field="toolbar_search_on_add"
-                phx-value-value={to_string(!@toolbar_search_on_add)}
-              />
-              <span class="text-xs">
-                {(@toolbar_search_on_add && "Enabled") || "Disabled"}
-              </span>
-            </div>
-          </div>
         </div>
         <%!-- Season Monitoring for TV Shows --%>
         <%= if @media_type == :tv_show do %>
@@ -136,33 +117,25 @@
     </div>
 
     <%!-- Search Bar --%>
-    <div class="bg-base-100 rounded-lg p-6 mb-6 shadow-xl">
-      <.form for={%{}} phx-submit="search" id="search-form">
-        <div class="flex gap-3">
-          <div class="flex-1">
-            <.input
-              type="text"
-              name="search"
-              value={@search_query}
-              placeholder={"Search for " <> if(@media_type == :movie, do: "movies...", else: "TV shows...")}
-              class="input input-bordered input-lg w-full"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            class="btn btn-primary btn-lg whitespace-nowrap"
-            disabled={@searching}
-          >
-            <%= if @searching do %>
-              <span class="loading loading-spinner"></span> Searching...
-            <% else %>
-              <.icon name="hero-magnifying-glass" class="w-5 h-5" /> Search
-            <% end %>
-          </button>
-        </div>
-      </.form>
-    </div>
+    <.form for={%{}} phx-submit="search" id="search-form" class="mb-6">
+      <div class="join w-full">
+        <.input
+          type="text"
+          name="search"
+          value={@search_query}
+          placeholder={"Search for " <> if(@media_type == :movie, do: "movies...", else: "TV shows...")}
+          class="input input-bordered w-full join-item"
+          required
+        />
+        <button type="submit" class="btn btn-primary join-item" disabled={@searching}>
+          <%= if @searching do %>
+            <span class="loading loading-spinner loading-sm"></span> Searching...
+          <% else %>
+            Search
+          <% end %>
+        </button>
+      </div>
+    </.form>
 
     <%!-- No Results Message --%>
     <%= if @search_results == [] and @search_query != "" and not @searching do %>
@@ -180,7 +153,8 @@
         </h2>
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           <%= for {result, index} <- Enum.with_index(@search_results) do %>
-            <% is_added = MapSet.member?(@added_items, result[:id]) %>
+            <% media_item_id = Map.get(@added_item_ids, result[:id]) %>
+            <% is_added = !is_nil(media_item_id) %>
             <% is_adding = @adding_index == index %>
             <div class="card bg-base-100 shadow-lg hover:shadow-xl transition-shadow">
               <figure class="relative aspect-[2/3] overflow-hidden bg-base-300">
@@ -214,32 +188,50 @@
                     {result[:overview]}
                   </p>
                 <% end %>
-                <div class="card-actions mt-2">
+                <div class="card-actions mt-2 flex-col gap-1">
                   <%= if is_added do %>
-                    <button class="btn btn-success btn-sm btn-block" disabled>
-                      <.icon name="hero-check" class="w-4 h-4" /> Added
-                    </button>
+                    <.link
+                      navigate={~p"/media/#{media_item_id}"}
+                      class="btn btn-primary btn-sm btn-block gap-2"
+                    >
+                      <.icon name="hero-arrow-right" class="w-4 h-4" />
+                      {if @media_type == :movie, do: "Go to Movie", else: "Go to Show"}
+                    </.link>
                   <% else %>
                     <%= if is_adding do %>
                       <button class="btn btn-primary btn-sm btn-block" disabled>
                         <span class="loading loading-spinner loading-xs"></span> Adding...
                       </button>
                     <% else %>
+                      <div class="flex gap-1 w-full">
+                        <button
+                          class="btn btn-primary btn-sm flex-1"
+                          phx-click="quick_add"
+                          phx-value-index={index}
+                          phx-value-search_on_add="false"
+                          disabled={@library_paths == []}
+                          title="Add to library"
+                        >
+                          <.icon name="hero-plus" class="w-4 h-4" /> Add
+                        </button>
+                        <button
+                          class="btn btn-ghost btn-sm"
+                          phx-click="open_config_modal"
+                          phx-value-index={index}
+                          title="Configure before adding"
+                        >
+                          <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+                        </button>
+                      </div>
                       <button
-                        class="btn btn-primary btn-sm flex-1"
+                        class="btn btn-secondary btn-sm btn-block"
                         phx-click="quick_add"
                         phx-value-index={index}
+                        phx-value-search_on_add="true"
                         disabled={@library_paths == []}
+                        title="Add to library and search for content"
                       >
-                        <.icon name="hero-plus" class="w-4 h-4" /> Add
-                      </button>
-                      <button
-                        class="btn btn-ghost btn-sm"
-                        phx-click="open_config_modal"
-                        phx-value-index={index}
-                        title="Configure before adding"
-                      >
-                        <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+                        <.icon name="hero-magnifying-glass" class="w-4 h-4" /> Add + Search
                       </button>
                     <% end %>
                   <% end %>

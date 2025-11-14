@@ -15,7 +15,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
      |> assign(:quality_profiles, Settings.list_quality_profiles())
      |> assign(:library_paths, [])
      |> assign(:metadata_config, Metadata.default_relay_config())
-     |> assign(:added_items, MapSet.new())
+     |> assign(:added_item_ids, %{})
      |> assign(:adding_index, nil)
      |> assign(:show_config_modal, false)
      |> assign(:config_modal_result, nil)
@@ -71,7 +71,7 @@ defmodule MydiaWeb.AddMediaLive.Index do
     # Parse value based on field type
     parsed_value =
       case field_atom do
-        field when field in [:toolbar_monitored, :toolbar_search_on_add] ->
+        :toolbar_monitored ->
           value == "true"
 
         _ ->
@@ -81,13 +81,19 @@ defmodule MydiaWeb.AddMediaLive.Index do
     {:noreply, assign(socket, field_atom, parsed_value)}
   end
 
-  def handle_event("quick_add", %{"index" => index_str}, socket) do
+  def handle_event("quick_add", params, socket) do
     with :ok <- Authorization.authorize_create_media(socket) do
-      index = String.to_integer(index_str)
+      index = String.to_integer(params["index"])
       result = Enum.at(socket.assigns.search_results, index)
+      # Default to false if not specified for backward compatibility
+      search_on_add = params["search_on_add"] == "true"
 
       if result do
-        send(self(), {:create_media_item, index, result, build_config_from_toolbar(socket)})
+        config = build_config_from_toolbar(socket)
+        # Override search_on_add with the explicit button value
+        config = Map.put(config, :search_on_add, search_on_add)
+
+        send(self(), {:create_media_item, index, result, config})
 
         {:noreply, assign(socket, :adding_index, index)}
       else
@@ -162,9 +168,13 @@ defmodule MydiaWeb.AddMediaLive.Index do
 
     case Metadata.search(socket.assigns.metadata_config, query, opts) do
       {:ok, results} ->
+        # Check which results are already in the library
+        added_item_ids = check_existing_items(results, socket.assigns.media_type)
+
         {:noreply,
          socket
          |> assign(:search_results, results)
+         |> assign(:added_item_ids, added_item_ids)
          |> assign(:searching, false)}
 
       {:error, reason} ->
@@ -197,7 +207,10 @@ defmodule MydiaWeb.AddMediaLive.Index do
             {:noreply,
              socket
              |> assign(:adding_index, nil)
-             |> assign(:added_items, MapSet.put(socket.assigns.added_items, selected.provider_id))
+             |> assign(
+               :added_item_ids,
+               Map.put(socket.assigns.added_item_ids, selected.provider_id, media_item.id)
+             )
              |> put_flash(:info, "#{media_item.title} has been added to your library")}
 
           {:error, changeset} ->
@@ -227,7 +240,6 @@ defmodule MydiaWeb.AddMediaLive.Index do
     |> assign(:toolbar_library_path_id, default_path && default_path.id)
     |> assign(:toolbar_quality_profile_id, default_profile && default_profile.id)
     |> assign(:toolbar_monitored, true)
-    |> assign(:toolbar_search_on_add, false)
     |> assign(:toolbar_season_monitoring, "all")
   end
 
@@ -236,7 +248,6 @@ defmodule MydiaWeb.AddMediaLive.Index do
       library_path_id: socket.assigns.toolbar_library_path_id,
       quality_profile_id: socket.assigns.toolbar_quality_profile_id,
       monitored: socket.assigns.toolbar_monitored,
-      search_on_add: socket.assigns.toolbar_search_on_add,
       season_monitoring: socket.assigns.toolbar_season_monitoring
     }
   end
@@ -366,6 +377,22 @@ defmodule MydiaWeb.AddMediaLive.Index do
   end
 
   defp extract_year_from_date(_), do: nil
+
+  defp check_existing_items(results, media_type) do
+    # Extract TMDB IDs from search results
+    tmdb_ids = Enum.map(results, & &1[:id]) |> Enum.reject(&is_nil/1)
+
+    if tmdb_ids == [] do
+      %{}
+    else
+      # Query for existing media items with these TMDB IDs
+      type_string = if media_type == :movie, do: "movie", else: "tv_show"
+
+      Media.list_media_items(type: type_string)
+      |> Enum.filter(&(&1.tmdb_id in tmdb_ids))
+      |> Map.new(&{&1.tmdb_id, &1.id})
+    end
+  end
 
   defp create_episodes_for_media(media_item, metadata, config) do
     season_monitoring = config.season_monitoring || "all"
