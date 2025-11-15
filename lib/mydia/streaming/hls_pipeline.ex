@@ -246,7 +246,8 @@ defmodule Mydia.Streaming.HlsPipeline do
         |> String.downcase()
 
       _ ->
-        media_file.path
+        # Use relative_path for file extension detection
+        media_file.relative_path
         |> Path.extname()
         |> String.trim_leading(".")
         |> String.downcase()

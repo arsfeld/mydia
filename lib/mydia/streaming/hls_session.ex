@@ -156,7 +156,8 @@ defmodule Mydia.Streaming.HlsSession do
 
     # Load media file with metadata
     try do
-      media_file = Library.get_media_file!(media_file_id, preload: [:media_item, :episode])
+      media_file =
+        Library.get_media_file!(media_file_id, preload: [:media_item, :episode, :library_path])
 
       # Register this session in the Registry
       Registry.register(
@@ -324,17 +325,19 @@ defmodule Mydia.Streaming.HlsSession do
 
   # Start the appropriate backend based on configuration
   defp start_backend(:ffmpeg, media_file, temp_dir) do
-    Logger.info("Starting FFmpeg backend for #{media_file.path}")
+    # Resolve absolute path for FFmpeg input
+    absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+    Logger.info("Starting FFmpeg backend for #{absolute_path}")
 
     case FfmpegHlsTranscoder.start_transcoding(
-           input_path: media_file.path,
+           input_path: absolute_path,
            output_dir: temp_dir,
            media_file: media_file,
            on_complete: fn ->
-             Logger.info("FFmpeg transcoding completed for #{media_file.path}")
+             Logger.info("FFmpeg transcoding completed for #{absolute_path}")
            end,
            on_error: fn error ->
-             Logger.error("FFmpeg transcoding error for #{media_file.path}: #{error}")
+             Logger.error("FFmpeg transcoding error for #{absolute_path}: #{error}")
            end
          ) do
       {:ok, pid} ->
@@ -346,10 +349,12 @@ defmodule Mydia.Streaming.HlsSession do
   end
 
   defp start_backend(:membrane, media_file, temp_dir) do
-    Logger.info("Starting Membrane backend for #{media_file.path}")
+    # Resolve absolute path for Membrane pipeline input
+    absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+    Logger.info("Starting Membrane backend for #{absolute_path}")
 
     pipeline_opts = [
-      source_path: media_file.path,
+      source_path: absolute_path,
       output_dir: temp_dir,
       media_file: media_file
     ]
