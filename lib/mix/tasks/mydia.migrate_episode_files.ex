@@ -69,7 +69,7 @@ defmodule Mix.Tasks.Mydia.MigrateEpisodeFiles do
         join: mi in MediaItem,
         on: e.media_item_id == mi.id,
         where: mi.type == "tv_show",
-        preload: [episode: {e, media_item: mi}],
+        preload: [:library_path, episode: {e, media_item: mi}],
         order_by: [mi.title, e.season_number, e.episode_number]
 
     query =
@@ -98,7 +98,7 @@ defmodule Mix.Tasks.Mydia.MigrateEpisodeFiles do
   defp migrate_file(media_file, dry_run) do
     episode = media_file.episode
     show = episode.media_item
-    file_path = media_file.path
+    file_path = MediaFile.absolute_path(media_file)
 
     # Check if file exists
     if not File.exists?(file_path) do
@@ -142,8 +142,13 @@ defmodule Mix.Tasks.Mydia.MigrateEpisodeFiles do
           # Move the file
           case File.rename(file_path, dest_path) do
             :ok ->
-              # Update the database
-              {:ok, _} = Library.update_media_file(media_file, %{path: dest_path})
+              # Calculate new relative path
+              library_path_root = media_file.library_path.path
+              new_relative_path = String.replace_prefix(dest_path, library_path_root <> "/", "")
+
+              # Update the database with new relative path
+              {:ok, _} =
+                Library.update_media_file(media_file, %{relative_path: new_relative_path})
 
               Mix.shell().info("""
               ✅ Moved file:

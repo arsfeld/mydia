@@ -2,7 +2,7 @@ defmodule MydiaWeb.ImportMediaLive.Index do
   use MydiaWeb, :live_view
 
   alias Mydia.{Library, Metadata, Settings}
-  alias Mydia.Library.{Scanner, MetadataMatcher, FileGrouper}
+  alias Mydia.Library.{Scanner, MetadataMatcher, FileGrouper, MediaFile}
   alias MydiaWeb.Live.Authorization
   alias MydiaWeb.ImportMediaLive.Components
 

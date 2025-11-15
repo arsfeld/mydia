@@ -258,7 +258,7 @@ defmodule Mydia.Jobs.LibraryScanner do
 
           # Preload library_path association for path resolution
           media_file = Mydia.Repo.preload(media_file, :library_path)
-          absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+          absolute_path = Mydia.Library.MediaFile.absolute_path(media_file)
 
           Logger.debug("Deleted media file record", path: absolute_path)
         end)
@@ -320,7 +320,7 @@ defmodule Mydia.Jobs.LibraryScanner do
               Enum.count(completely_orphaned, fn media_file ->
                 # Preload library_path association for path resolution
                 media_file = Mydia.Repo.preload(media_file, :library_path)
-                absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+                absolute_path = Mydia.Library.MediaFile.absolute_path(media_file)
 
                 file_info =
                   Enum.find(result.scan_result.files, fn f -> f.path == absolute_path end)
@@ -411,7 +411,7 @@ defmodule Mydia.Jobs.LibraryScanner do
             |> Enum.map(fn file ->
               # Preload library_path association for path resolution
               file = Mydia.Repo.preload(file, :library_path)
-              Mydia.Media.MediaFile.absolute_path(file)
+              Mydia.Library.MediaFile.absolute_path(file)
             end)
 
           Logger.warning("Detected movies in series-only library",
@@ -427,7 +427,7 @@ defmodule Mydia.Jobs.LibraryScanner do
             |> Enum.map(fn file ->
               # Preload library_path association for path resolution
               file = Mydia.Repo.preload(file, :library_path)
-              Mydia.Media.MediaFile.absolute_path(file)
+              Mydia.Library.MediaFile.absolute_path(file)
             end)
 
           Logger.warning("Detected TV shows in movies-only library",
@@ -633,7 +633,7 @@ defmodule Mydia.Jobs.LibraryScanner do
     try do
       # Preload library_path association for path resolution
       media_file = Mydia.Repo.preload(media_file, :library_path)
-      path_for_log = Mydia.Media.MediaFile.absolute_path(media_file)
+      path_for_log = Mydia.Library.MediaFile.absolute_path(media_file)
 
       Logger.debug("Attempting to fix orphaned TV file",
         path: path_for_log,
@@ -727,7 +727,7 @@ defmodule Mydia.Jobs.LibraryScanner do
       error ->
         # Recalculate path for error logging if media_file hasn't been preloaded yet
         media_file = Mydia.Repo.preload(media_file, :library_path, force: true)
-        error_path = Mydia.Media.MediaFile.absolute_path(media_file)
+        error_path = Mydia.Library.MediaFile.absolute_path(media_file)
 
         Logger.error("Exception while fixing orphaned TV file",
           path: error_path,
@@ -756,7 +756,7 @@ defmodule Mydia.Jobs.LibraryScanner do
              media_file.episode.episode_number != episode_number do
           # Preload library_path association for path resolution
           media_file = Mydia.Repo.preload(media_file, :library_path)
-          path_for_log = Mydia.Media.MediaFile.absolute_path(media_file)
+          path_for_log = Mydia.Library.MediaFile.absolute_path(media_file)
 
           Logger.info("File association mismatch detected",
             path: path_for_log,
@@ -816,7 +816,7 @@ defmodule Mydia.Jobs.LibraryScanner do
     error ->
       # Preload library_path association for path resolution in rescue
       media_file = Mydia.Repo.preload(media_file, :library_path)
-      path_for_log = Mydia.Media.MediaFile.absolute_path(media_file)
+      path_for_log = Mydia.Library.MediaFile.absolute_path(media_file)
 
       Logger.error("Exception while revalidating file association",
         path: path_for_log,
@@ -833,7 +833,7 @@ defmodule Mydia.Jobs.LibraryScanner do
     try do
       # Preload library_path association for path resolution
       media_file = Mydia.Repo.preload(media_file, :library_path)
-      path_for_log = Mydia.Media.MediaFile.absolute_path(media_file)
+      path_for_log = Mydia.Library.MediaFile.absolute_path(media_file)
 
       case Library.update_media_file(media_file, %{episode_id: episode.id, media_item_id: nil}) do
         {:ok, _updated_file} ->
@@ -856,7 +856,7 @@ defmodule Mydia.Jobs.LibraryScanner do
       error ->
         # Recalculate path for error logging
         media_file = Mydia.Repo.preload(media_file, :library_path, force: true)
-        error_path = Mydia.Media.MediaFile.absolute_path(media_file)
+        error_path = Mydia.Library.MediaFile.absolute_path(media_file)
 
         Logger.error("Exception while associating file with episode",
           path: error_path,

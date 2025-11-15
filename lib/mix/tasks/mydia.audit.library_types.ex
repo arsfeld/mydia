@@ -108,7 +108,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
           join: mi in MediaItem,
           on: mf.media_item_id == mi.id,
           where: mi.type == "movie",
-          preload: [media_item: mi],
+          preload: [:library_path, media_item: mi],
           select: mf
 
       media_files = Repo.all(query)
@@ -117,10 +117,12 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
       mismatches =
         media_files
         |> Enum.filter(fn mf ->
-          Enum.any?(series_path_strings, &String.starts_with?(mf.path, &1))
+          absolute_path = MediaFile.absolute_path(mf)
+          Enum.any?(series_path_strings, &String.starts_with?(absolute_path, &1))
         end)
         |> Enum.map(fn mf ->
-          library_path = find_library_path_for_file(mf.path, series_only_paths)
+          absolute_path = MediaFile.absolute_path(mf)
+          library_path = find_library_path_for_file(absolute_path, series_only_paths)
 
           %{
             media_file: mf,
@@ -156,7 +158,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
           join: mi in MediaItem,
           on: e.media_item_id == mi.id,
           where: mi.type == "tv_show",
-          preload: [episode: {e, media_item: mi}],
+          preload: [:library_path, episode: {e, media_item: mi}],
           select: mf
 
       media_files = Repo.all(query)
@@ -165,10 +167,12 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
       mismatches =
         media_files
         |> Enum.filter(fn mf ->
-          Enum.any?(movies_path_strings, &String.starts_with?(mf.path, &1))
+          absolute_path = MediaFile.absolute_path(mf)
+          Enum.any?(movies_path_strings, &String.starts_with?(absolute_path, &1))
         end)
         |> Enum.map(fn mf ->
-          library_path = find_library_path_for_file(mf.path, movies_only_paths)
+          absolute_path = MediaFile.absolute_path(mf)
+          library_path = find_library_path_for_file(absolute_path, movies_only_paths)
 
           %{
             media_file: mf,
@@ -203,13 +207,15 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
 
   defp print_detailed_mismatches(mismatches) do
     Enum.each(mismatches, fn mismatch ->
+      absolute_path = MediaFile.absolute_path(mismatch.media_file)
+
       case mismatch.issue do
         :movie_in_series_library ->
           Mix.shell().info("""
             ❌ Movie in series-only library:
                Title: #{mismatch.media_item.title} (#{mismatch.media_item.year})
                TMDB ID: #{mismatch.media_item.tmdb_id}
-               File: #{mismatch.media_file.path}
+               File: #{absolute_path}
                Library: #{mismatch.library_path.path} (type: :series)
           """)
 
@@ -219,7 +225,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
                Show: #{mismatch.media_item.title}
                Episode: S#{String.pad_leading("#{mismatch.episode.season_number}", 2, "0")}E#{String.pad_leading("#{mismatch.episode.episode_number}", 2, "0")}
                TMDB ID: #{mismatch.media_item.tmdb_id}
-               File: #{mismatch.media_file.path}
+               File: #{absolute_path}
                Library: #{mismatch.library_path.path} (type: :movies)
           """)
       end
@@ -284,6 +290,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
     media_file = mismatch.media_file
     media_item = mismatch.media_item
     current_library = mismatch.library_path
+    absolute_path = MediaFile.absolute_path(media_file)
 
     # Try to find a compatible library path to move to
     target_library = List.first(compatible_paths)
@@ -294,7 +301,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
         Mix.shell().error("""
         ❌ Cannot fix movie in series library (no compatible library found):
            Title: #{media_item.title} (#{media_item.year})
-           File: #{media_file.path}
+           File: #{absolute_path}
            Action: Delete the media_file association (file will become orphaned)
         """)
 
@@ -322,7 +329,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
            Title: #{media_item.title} (#{media_item.year})
            From: #{current_library.path} (type: :series)
            To: #{target_library.path} (type: #{target_library.type})
-           File: #{media_file.path}
+           File: #{absolute_path}
            Note: This task does not move physical files, only orphans the association.
                  Use library scanner to re-import in the correct library.
         """)
@@ -343,6 +350,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
     media_item = mismatch.media_item
     episode = mismatch.episode
     current_library = mismatch.library_path
+    absolute_path = MediaFile.absolute_path(media_file)
 
     # Try to find a compatible library path to move to
     target_library = List.first(compatible_paths)
@@ -354,7 +362,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
         ❌ Cannot fix TV show in movies library (no compatible library found):
            Show: #{media_item.title}
            Episode: S#{String.pad_leading("#{episode.season_number}", 2, "0")}E#{String.pad_leading("#{episode.episode_number}", 2, "0")}
-           File: #{media_file.path}
+           File: #{absolute_path}
            Action: Delete the media_file association (file will become orphaned)
         """)
 
@@ -384,7 +392,7 @@ defmodule Mix.Tasks.Mydia.Audit.LibraryTypes do
            Episode: S#{String.pad_leading("#{episode.season_number}", 2, "0")}E#{String.pad_leading("#{episode.episode_number}", 2, "0")}
            From: #{current_library.path} (type: :movies)
            To: #{target_library.path} (type: #{target_library.type})
-           File: #{media_file.path}
+           File: #{absolute_path}
            Note: This task does not move physical files, only orphans the association.
                  Use library scanner to re-import in the correct library.
         """)

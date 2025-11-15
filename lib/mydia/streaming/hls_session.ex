@@ -326,7 +326,7 @@ defmodule Mydia.Streaming.HlsSession do
   # Start the appropriate backend based on configuration
   defp start_backend(:ffmpeg, media_file, temp_dir) do
     # Resolve absolute path for FFmpeg input
-    absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+    absolute_path = Mydia.Library.MediaFile.absolute_path(media_file)
     Logger.info("Starting FFmpeg backend for #{absolute_path}")
 
     case FfmpegHlsTranscoder.start_transcoding(
@@ -350,7 +350,7 @@ defmodule Mydia.Streaming.HlsSession do
 
   defp start_backend(:membrane, media_file, temp_dir) do
     # Resolve absolute path for Membrane pipeline input
-    absolute_path = Mydia.Media.MediaFile.absolute_path(media_file)
+    absolute_path = Mydia.Library.MediaFile.absolute_path(media_file)
     Logger.info("Starting Membrane backend for #{absolute_path}")
 
     pipeline_opts = [

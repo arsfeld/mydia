@@ -16,8 +16,8 @@ defmodule MydiaWeb.MediaLive.Show.Loaders do
   defp build_preload_list do
     [
       quality_profile: [],
-      episodes: [:media_files, downloads: :media_item],
-      media_files: [],
+      episodes: [media_files: :library_path, downloads: :media_item],
+      media_files: :library_path,
       downloads: []
     ]
   end

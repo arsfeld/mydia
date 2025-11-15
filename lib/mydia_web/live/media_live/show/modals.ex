@@ -164,7 +164,7 @@ defmodule MydiaWeb.MediaLive.Show.Modals do
         </p>
         <div class="bg-base-200 p-3 rounded-box mb-4">
           <p class="text-sm font-mono text-base-content/70">
-            {@file_to_delete.path}
+            {Mydia.Library.MediaFile.absolute_path(@file_to_delete)}
           </p>
           <p class="text-sm mt-2">
             <span class="font-semibold">Size:</span>
@@ -205,7 +205,7 @@ defmodule MydiaWeb.MediaLive.Show.Modals do
           <div>
             <h4 class="text-sm font-semibold text-base-content/70 mb-2">File Path</h4>
             <p class="text-sm font-mono bg-base-200 p-3 rounded-box break-all">
-              {@file_details.path}
+              {Mydia.Library.MediaFile.absolute_path(@file_details)}
             </p>
           </div>
           <%!-- Quality Information --%>

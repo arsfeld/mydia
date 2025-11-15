@@ -469,11 +469,12 @@ defmodule MydiaWeb.MediaLive.Show.Components do
                 <%!-- Left side: File info --%>
                 <div class="flex-1 min-w-0 flex flex-col gap-2">
                   <%!-- File path --%>
+                  <% absolute_path = Mydia.Library.MediaFile.absolute_path(file) %>
                   <p
                     class="text-sm font-mono text-base-content break-all leading-relaxed"
-                    title={file.path}
+                    title={absolute_path}
                   >
-                    {file.path}
+                    {absolute_path}
                   </p>
                   <%!-- Technical details with quality badge --%>
                   <div class="flex flex-wrap gap-4 text-xs text-base-content/70 items-center">
