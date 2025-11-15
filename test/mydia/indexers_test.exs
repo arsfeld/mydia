@@ -206,6 +206,8 @@ defmodule Mydia.IndexersTest do
 
   describe "ranking algorithm" do
     test "ranks higher quality results first" do
+      alias Mydia.Indexers.{QualityParser, Structs.QualityInfo}
+
       low_quality = %SearchResult{
         title: "Movie.480p.WEBRip",
         size: 500_000_000,
@@ -213,15 +215,16 @@ defmodule Mydia.IndexersTest do
         leechers: 10,
         download_url: "magnet:?xt=urn:btih:abc123",
         indexer: "Test",
-        quality: %{
-          resolution: "480p",
-          source: "WEBRip",
-          codec: "x264",
-          audio: nil,
-          hdr: false,
-          proper: false,
-          repack: false
-        }
+        quality:
+          QualityInfo.new(%{
+            resolution: "480p",
+            source: "WEBRip",
+            codec: "x264",
+            audio: nil,
+            hdr: false,
+            proper: false,
+            repack: false
+          })
       }
 
       high_quality = %SearchResult{
@@ -231,20 +234,19 @@ defmodule Mydia.IndexersTest do
         leechers: 10,
         download_url: "magnet:?xt=urn:btih:def456",
         indexer: "Test",
-        quality: %{
-          resolution: "2160p",
-          source: "BluRay",
-          codec: "x265",
-          audio: "DTS",
-          hdr: true,
-          proper: false,
-          repack: false
-        }
+        quality:
+          QualityInfo.new(%{
+            resolution: "2160p",
+            source: "BluRay",
+            codec: "x265",
+            audio: "DTS",
+            hdr: true,
+            proper: false,
+            repack: false
+          })
       }
 
       # High quality should score higher
-      alias Mydia.Indexers.QualityParser
-
       low_score = QualityParser.quality_score(low_quality.quality)
       high_score = QualityParser.quality_score(high_quality.quality)
 
@@ -279,6 +281,8 @@ defmodule Mydia.IndexersTest do
       # medium quality with many seeders
       # Should prefer quality (60% weight) but seeders still matter
 
+      alias Mydia.Indexers.Structs.QualityInfo
+
       high_qual_few_seeds = %SearchResult{
         title: "Movie.2160p.BluRay",
         size: 8_000_000_000,
@@ -286,15 +290,16 @@ defmodule Mydia.IndexersTest do
         leechers: 5,
         download_url: "magnet:?xt=urn:btih:abc123",
         indexer: "Test",
-        quality: %{
-          resolution: "2160p",
-          source: "BluRay",
-          codec: "x265",
-          audio: "TrueHD",
-          hdr: true,
-          proper: false,
-          repack: false
-        }
+        quality:
+          QualityInfo.new(%{
+            resolution: "2160p",
+            source: "BluRay",
+            codec: "x265",
+            audio: "TrueHD",
+            hdr: true,
+            proper: false,
+            repack: false
+          })
       }
 
       med_qual_many_seeds = %SearchResult{
@@ -304,15 +309,16 @@ defmodule Mydia.IndexersTest do
         leechers: 100,
         download_url: "magnet:?xt=urn:btih:def456",
         indexer: "Test",
-        quality: %{
-          resolution: "1080p",
-          source: "WEB-DL",
-          codec: "x264",
-          audio: "AAC",
-          hdr: false,
-          proper: false,
-          repack: false
-        }
+        quality:
+          QualityInfo.new(%{
+            resolution: "1080p",
+            source: "WEB-DL",
+            codec: "x264",
+            audio: "AAC",
+            hdr: false,
+            proper: false,
+            repack: false
+          })
       }
 
       # Both should score reasonably well but quality should have preference
