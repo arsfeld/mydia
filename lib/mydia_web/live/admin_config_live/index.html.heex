@@ -65,6 +65,40 @@
           <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
               <h2 class="card-title text-2xl mb-4">{category}</h2>
+              <%!-- Crash Reporting Info --%>
+              <%= if category == "Crash Reporting" do %>
+                <div class="alert alert-info mb-4">
+                  <.icon name="hero-information-circle" class="w-6 h-6" />
+                  <div class="text-sm">
+                    <div class="font-semibold mb-1">Crash Reporting</div>
+                    <div class="space-y-1">
+                      <p>
+                        <strong>Local Storage:</strong>
+                        Crashes are stored in your database for 30 days. View at <a
+                          href="/admin/errors"
+                          class="link link-primary"
+                        >/admin/errors</a>.
+                      </p>
+                      <p>
+                        <strong>Developer Sharing:</strong>
+                        Enable the setting below to send crash reports to the metadata-relay service.
+                        Reports include error messages, stack traces, versions, and environment info.
+                        Usernames, secrets, and credentials are removed before sending.
+                      </p>
+                      <p>
+                        <strong>Metadata Relay URL:</strong>
+                        <code class="text-xs bg-base-300 px-1 rounded">
+                          {Application.get_env(
+                            :mydia,
+                            :metadata_relay_url,
+                            "http://localhost:4001"
+                          )}
+                        </code>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
 
               <form phx-change="update_setting_form" id={"settings-form-#{category}"}>
                 <input type="hidden" name="category" value={category} />
