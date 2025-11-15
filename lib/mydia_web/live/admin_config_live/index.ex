@@ -626,58 +626,6 @@ defmodule MydiaWeb.AdminConfigLive.Index do
      |> load_configuration_data()}
   end
 
-  @impl true
-  def handle_event("show_manual_report_form", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_manual_report_modal, true)
-     |> assign(:manual_report_error, "")
-     |> assign(:manual_report_notes, "")}
-  end
-
-  @impl true
-  def handle_event("close_manual_report_modal", _params, socket) do
-    {:noreply, assign(socket, :show_manual_report_modal, false)}
-  end
-
-  @impl true
-  def handle_event(
-        "submit_manual_crash_report",
-        %{"error" => error_message, "notes" => notes},
-        socket
-      ) do
-    # Create a simple runtime error from the user's description
-    error = %RuntimeError{message: error_message}
-
-    # Add notes to metadata
-    metadata = %{
-      user_submitted: true,
-      notes: notes,
-      submitted_by: socket.assigns.current_user.email
-    }
-
-    case Mydia.CrashReporter.submit_manual_report(error, nil, metadata) do
-      {:ok, report_id} ->
-        {:noreply,
-         socket
-         |> assign(:show_manual_report_modal, false)
-         |> put_flash(:info, "Crash report submitted successfully (ID: #{report_id})")}
-
-      {:error, reason} ->
-        MydiaLogger.log_error(:liveview, "Failed to submit manual crash report",
-          error: reason,
-          operation: :submit_manual_crash_report,
-          user_id: socket.assigns.current_user.id
-        )
-
-        error_msg = MydiaLogger.user_error_message(:submit_manual_crash_report, reason)
-
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to submit crash report: #{error_msg}")}
-    end
-  end
-
   ## Library Path Events
 
   @impl true

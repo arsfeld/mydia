@@ -67,36 +67,15 @@
               <h2 class="card-title text-2xl mb-4">{category}</h2>
               <%!-- Crash Reporting Info --%>
               <%= if category == "Crash Reporting" do %>
-                <div class="alert alert-info mb-4">
-                  <.icon name="hero-information-circle" class="w-6 h-6" />
-                  <div class="text-sm">
-                    <div class="font-semibold mb-1">Crash Reporting</div>
-                    <div class="space-y-1">
-                      <p>
-                        <strong>Local Storage:</strong>
-                        Crashes are stored in your database for 30 days. View at <a
-                          href="/admin/errors"
-                          class="link link-primary"
-                        >/admin/errors</a>.
-                      </p>
-                      <p>
-                        <strong>Developer Sharing:</strong>
-                        Enable the setting below to send crash reports to the metadata-relay service.
-                        Reports include error messages, stack traces, versions, and environment info.
-                        Usernames, secrets, and credentials are removed before sending.
-                      </p>
-                      <p>
-                        <strong>Metadata Relay URL:</strong>
-                        <code class="text-xs bg-base-300 px-1 rounded">
-                          {Application.get_env(
-                            :mydia,
-                            :metadata_relay_url,
-                            "http://localhost:4001"
-                          )}
-                        </code>
-                      </p>
-                    </div>
-                  </div>
+                <div class="text-sm text-base-content/70 mb-4">
+                  <p class="mb-2">
+                    Crashes are stored locally for 30 days and viewable at <a
+                      href="/admin/errors"
+                      class="link link-primary"
+                    >/admin/errors</a>.
+                    Enable sharing below to send sanitized reports to developers via metadata-relay—all
+                    secrets and credentials are automatically removed.
+                  </p>
                 </div>
                 <%!-- Pending Reports Queue --%>
                 <%= if @crash_report_stats.enabled && @crash_report_stats.queued_reports > 0 do %>
@@ -168,20 +147,6 @@
                     </div>
                   </div>
                 <% end %>
-                <%!-- Manual Report Submission --%>
-                <div class="card bg-base-200 mb-4">
-                  <div class="card-body">
-                    <h3 class="card-title text-lg">Manual Report Submission</h3>
-                    <p class="text-sm text-base-content/70 mb-3">
-                      If you encounter an error and want to report it to developers without enabling automatic sharing,
-                      you can manually submit a crash report here. This works regardless of whether automatic
-                      crash reporting is enabled.
-                    </p>
-                    <button class="btn btn-primary btn-sm" phx-click="show_manual_report_form">
-                      <.icon name="hero-paper-airplane" class="w-4 h-4" /> Submit Error Report
-                    </button>
-                  </div>
-                </div>
               <% end %>
 
               <form phx-change="update_setting_form" id={"settings-form-#{category}"}>
@@ -929,75 +894,6 @@
               <button type="submit" class="btn btn-primary">Save</button>
             </div>
           </.form>
-        </div>
-      </div>
-    <% end %>
-    <%!-- Manual Crash Report Modal --%>
-    <%= if assigns[:show_manual_report_modal] do %>
-      <div class="modal modal-open">
-        <div class="modal-box max-w-2xl">
-          <h3 class="font-bold text-lg mb-4">Submit Manual Crash Report</h3>
-          <div class="alert alert-info mb-4">
-            <.icon name="hero-information-circle" class="w-6 h-6" />
-            <div class="text-sm">
-              <p class="font-semibold mb-1">Privacy Notice</p>
-              <p>
-                Your report will be sanitized before sending. Usernames, secrets, and credentials
-                will be redacted. The report will include the error description, your notes,
-                and system information (Elixir version, OTP version, etc.).
-              </p>
-            </div>
-          </div>
-
-          <form phx-submit="submit_manual_crash_report" id="manual-crash-report-form">
-            <div class="space-y-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">
-                    Error Description <span class="text-error">*</span>
-                  </span>
-                </label>
-                <textarea
-                  name="error"
-                  rows="3"
-                  class="textarea textarea-bordered"
-                  placeholder="Describe the error you encountered..."
-                  required
-                ></textarea>
-                <label class="label">
-                  <span class="label-text-alt">
-                    Briefly describe what went wrong (e.g., "Failed to import TV show")
-                  </span>
-                </label>
-              </div>
-
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Additional Context (Optional)</span>
-                </label>
-                <textarea
-                  name="notes"
-                  rows="4"
-                  class="textarea textarea-bordered"
-                  placeholder="Add any additional context that might help developers..."
-                ></textarea>
-                <label class="label">
-                  <span class="label-text-alt">
-                    Include steps to reproduce, what you expected vs. what happened, etc.
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <div class="modal-action">
-              <button type="button" class="btn" phx-click="close_manual_report_modal">
-                Cancel
-              </button>
-              <button type="submit" class="btn btn-primary">
-                <.icon name="hero-paper-airplane" class="w-4 h-4" /> Send Report
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     <% end %>
