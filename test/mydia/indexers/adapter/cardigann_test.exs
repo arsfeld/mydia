@@ -250,9 +250,9 @@ defmodule Mydia.Indexers.Adapter.CardigannTest do
   describe "adapter behaviour implementation" do
     test "implements all required callbacks" do
       # Verify the module implements the behaviour
-      assert function_exported?(Cardigann, :test_connection, 1)
-      assert function_exported?(Cardigann, :search, 3)
-      assert function_exported?(Cardigann, :get_capabilities, 1)
+      assert function_exported?(Mydia.Indexers.Adapter.Cardigann, :test_connection, 1)
+      assert function_exported?(Mydia.Indexers.Adapter.Cardigann, :search, 3)
+      assert function_exported?(Mydia.Indexers.Adapter.Cardigann, :get_capabilities, 1)
     end
   end
 
