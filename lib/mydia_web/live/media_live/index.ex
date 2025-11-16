@@ -2,6 +2,7 @@ defmodule MydiaWeb.MediaLive.Index do
   use MydiaWeb, :live_view
   alias Mydia.Media
   alias Mydia.Media.EpisodeStatus
+  alias Mydia.Metadata.Structs.MediaMetadata
   alias Mydia.Settings
 
   @items_per_page 50
@@ -570,7 +571,7 @@ defmodule MydiaWeb.MediaLive.Index do
 
   defp match_metadata_overview?(metadata, query) do
     case metadata do
-      %{"overview" => overview} when is_binary(overview) ->
+      %MediaMetadata{overview: overview} when is_binary(overview) ->
         String.contains?(String.downcase(overview), query)
 
       _ ->

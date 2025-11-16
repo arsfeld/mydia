@@ -75,6 +75,7 @@ defmodule Mydia.Downloads.TorrentMatcher do
 
   alias Mydia.Downloads.Structs.TorrentMatchResult
   alias Mydia.Media
+  alias Mydia.Metadata.Structs.MediaMetadata
 
   require Logger
 
@@ -514,7 +515,7 @@ defmodule Mydia.Downloads.TorrentMatcher do
     # Get alternative titles from metadata
     alternative_titles =
       case media_item.metadata do
-        %{"alternative_titles" => alt_titles} when is_list(alt_titles) ->
+        %MediaMetadata{alternative_titles: alt_titles} when is_list(alt_titles) ->
           Enum.map(alt_titles, fn title -> {title, true} end)
 
         _ ->

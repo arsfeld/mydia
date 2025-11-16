@@ -17,7 +17,7 @@ defmodule Mydia.Media.MediaItem do
     field :year, :integer
     field :tmdb_id, :integer
     field :imdb_id, :string
-    field :metadata, :map
+    field :metadata, Mydia.Media.MetadataType
     field :monitored, :boolean, default: true
 
     belongs_to :quality_profile, Mydia.Settings.QualityProfile
