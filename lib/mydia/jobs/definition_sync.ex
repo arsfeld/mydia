@@ -24,21 +24,27 @@ defmodule Mydia.Jobs.DefinitionSync do
 
   require Logger
   alias Mydia.Indexers.DefinitionSync
+  alias Mydia.Indexers.CardigannFeatureFlags
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    opts = parse_args(args)
+    if CardigannFeatureFlags.enabled?() do
+      opts = parse_args(args)
 
-    Logger.info("[DefinitionSyncJob] Starting scheduled sync", opts: opts)
+      Logger.info("[DefinitionSyncJob] Starting scheduled sync", opts: opts)
 
-    case DefinitionSync.sync_from_github(opts) do
-      {:ok, stats} ->
-        Logger.info("[DefinitionSyncJob] Sync completed successfully", stats: stats)
-        :ok
+      case DefinitionSync.sync_from_github(opts) do
+        {:ok, stats} ->
+          Logger.info("[DefinitionSyncJob] Sync completed successfully", stats: stats)
+          :ok
 
-      {:error, reason} ->
-        Logger.error("[DefinitionSyncJob] Sync failed", reason: inspect(reason))
-        {:error, reason}
+        {:error, reason} ->
+          Logger.error("[DefinitionSyncJob] Sync failed", reason: inspect(reason))
+          {:error, reason}
+      end
+    else
+      Logger.debug("[DefinitionSyncJob] Skipping sync - Cardigann feature disabled")
+      :ok
     end
   end
 

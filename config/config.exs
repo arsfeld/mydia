@@ -246,7 +246,9 @@ config :mydia, Oban,
        # Search for monitored TV shows every 15 minutes
        {"*/15 * * * *", Mydia.Jobs.TVShowSearch, args: %{"mode" => "all_monitored"}},
        # Clean up old events every Sunday at 2 AM
-       {"0 2 * * 0", Mydia.Jobs.EventCleanup}
+       {"0 2 * * 0", Mydia.Jobs.EventCleanup},
+       # Sync Cardigann definitions daily at 3 AM
+       {"0 3 * * *", Mydia.Jobs.DefinitionSync}
      ]}
   ]
 
@@ -291,7 +293,12 @@ config :mydia, :features,
   # Enable/disable media playback feature (Play Movie, Play Episode buttons)
   # Set to false to hide playback controls from the UI
   # Can be overridden via ENABLE_PLAYBACK environment variable
-  playback_enabled: false
+  playback_enabled: false,
+  # Enable/disable Cardigann native indexer support
+  # When enabled, provides access to hundreds of torrent indexers without external Prowlarr/Jackett
+  # Set to false to disable Cardigann indexers (default)
+  # Can be overridden via ENABLE_CARDIGANN environment variable
+  cardigann_enabled: false
 
 # Configure Ueberauth with empty providers by default
 # This is overridden in dev.exs if OIDC is configured

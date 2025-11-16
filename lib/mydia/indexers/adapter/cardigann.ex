@@ -54,7 +54,7 @@ defmodule Mydia.Indexers.Adapter.Cardigann do
   @behaviour Mydia.Indexers.Adapter
 
   alias Mydia.Indexers.{CardigannParser, CardigannSearchEngine, CardigannResultParser}
-  alias Mydia.Indexers.{CardigannDefinition, CardigannAuth}
+  alias Mydia.Indexers.{CardigannDefinition, CardigannAuth, CardigannFeatureFlags}
   alias Mydia.Indexers.Adapter.Error
   alias Mydia.Repo
 
@@ -62,38 +62,48 @@ defmodule Mydia.Indexers.Adapter.Cardigann do
 
   @impl true
   def test_connection(config) do
-    with {:ok, definition} <- fetch_definition(config),
-         {:ok, parsed} <- parse_definition(definition),
-         :ok <- test_indexer_reachable(parsed, config) do
-      {:ok,
-       %{
-         name: parsed.name,
-         type: parsed.type,
-         language: parsed.language,
-         indexer_id: parsed.id
-       }}
+    if CardigannFeatureFlags.enabled?() do
+      with {:ok, definition} <- fetch_definition(config),
+           {:ok, parsed} <- parse_definition(definition),
+           :ok <- test_indexer_reachable(parsed, config) do
+        {:ok,
+         %{
+           name: parsed.name,
+           type: parsed.type,
+           language: parsed.language,
+           indexer_id: parsed.id
+         }}
+      end
+    else
+      Logger.debug("Cardigann test connection skipped - feature disabled")
+      {:error, Error.invalid_config("Cardigann feature is disabled")}
     end
   end
 
   @impl true
   def search(config, query, opts \\ []) do
-    with {:ok, definition} <- fetch_definition(config),
-         {:ok, parsed} <- parse_definition(definition),
-         {:ok, search_opts} <- build_search_opts(query, opts),
-         {:ok, user_config} <- get_or_create_session(parsed, definition, config),
-         {:ok, response} <-
-           CardigannSearchEngine.execute_search(parsed, search_opts, user_config),
-         {:ok, results} <- CardigannResultParser.parse_results(parsed, response, config.name) do
-      # Apply filters from opts if present
-      filtered_results = apply_search_filters(results, opts)
-      {:ok, filtered_results}
-    else
-      {:error, %Error{} = error} ->
-        {:error, error}
+    if CardigannFeatureFlags.enabled?() do
+      with {:ok, definition} <- fetch_definition(config),
+           {:ok, parsed} <- parse_definition(definition),
+           {:ok, search_opts} <- build_search_opts(query, opts),
+           {:ok, user_config} <- get_or_create_session(parsed, definition, config),
+           {:ok, response} <-
+             CardigannSearchEngine.execute_search(parsed, search_opts, user_config),
+           {:ok, results} <- CardigannResultParser.parse_results(parsed, response, config.name) do
+        # Apply filters from opts if present
+        filtered_results = apply_search_filters(results, opts)
+        {:ok, filtered_results}
+      else
+        {:error, %Error{} = error} ->
+          {:error, error}
 
-      {:error, reason} ->
-        Logger.error("Cardigann search failed: #{inspect(reason)}")
-        {:error, Error.search_failed("Search failed: #{inspect(reason)}")}
+        {:error, reason} ->
+          Logger.error("Cardigann search failed: #{inspect(reason)}")
+          {:error, Error.search_failed("Search failed: #{inspect(reason)}")}
+      end
+    else
+      Logger.debug("Cardigann search skipped - feature disabled")
+      {:ok, []}
     end
   end
 

@@ -1,0 +1,47 @@
+defmodule Mydia.Indexers.CardigannFeatureFlags do
+  @moduledoc """
+  Helper module for checking Cardigann indexer feature flag.
+
+  This module handles the ENABLE_CARDIGANN feature flag which controls
+  whether Cardigann indexer functionality is available in the application.
+
+  When enabled, Cardigann indexers provide access to hundreds of torrent
+  indexers without requiring external Prowlarr/Jackett instances.
+
+  ## Features Controlled
+
+  - UI for browsing and managing Cardigann indexer definitions
+  - Background jobs for syncing indexer definitions from GitHub
+  - Search integration with Cardigann-based indexers
+  - Cardigann indexer results in search responses
+
+  ## Configuration
+
+  The feature flag reads from `:mydia, :features, :cardigann_enabled`
+  configuration and defaults to `false` (disabled).
+
+  Set via environment variable:
+  - `ENABLE_CARDIGANN=true` - Enable Cardigann indexers
+  - `ENABLE_CARDIGANN=false` - Disable Cardigann indexers (default)
+  """
+
+  @doc """
+  Returns true if Cardigann indexer functionality is enabled, false otherwise.
+
+  Reads from the :cardigann_enabled configuration under the :features key.
+
+  ## Examples
+
+      iex> Mydia.Indexers.CardigannFeatureFlags.enabled?()
+      false
+
+      # After setting ENABLE_CARDIGANN=true environment variable
+      iex> Mydia.Indexers.CardigannFeatureFlags.enabled?()
+      true
+
+  """
+  def enabled? do
+    Application.get_env(:mydia, :features, [])
+    |> Keyword.get(:cardigann_enabled, false)
+  end
+end

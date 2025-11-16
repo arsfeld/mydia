@@ -169,7 +169,16 @@ if config_env() == :prod do
       _ -> Application.get_env(:mydia, :features)[:playback_enabled] || false
     end
 
-  config :mydia, :features, playback_enabled: playback_enabled
+  cardigann_enabled =
+    case System.get_env("ENABLE_CARDIGANN") do
+      "true" -> true
+      "false" -> false
+      _ -> Application.get_env(:mydia, :features)[:cardigann_enabled] || false
+    end
+
+  config :mydia, :features,
+    playback_enabled: playback_enabled,
+    cardigann_enabled: cardigann_enabled
 end
 
 # Feature flags configuration for dev/test (reads from environment variable)
@@ -181,7 +190,16 @@ if config_env() in [:dev, :test] do
       _ -> Application.get_env(:mydia, :features)[:playback_enabled] || false
     end
 
-  config :mydia, :features, playback_enabled: playback_enabled
+  cardigann_enabled =
+    case System.get_env("ENABLE_CARDIGANN") do
+      "true" -> true
+      "false" -> false
+      _ -> Application.get_env(:mydia, :features)[:cardigann_enabled] || false
+    end
+
+  config :mydia, :features,
+    playback_enabled: playback_enabled,
+    cardigann_enabled: cardigann_enabled
 end
 
 # Ueberauth OIDC configuration (all environments)

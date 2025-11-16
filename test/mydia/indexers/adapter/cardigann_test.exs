@@ -51,6 +51,10 @@ defmodule Mydia.Indexers.Adapter.CardigannTest do
     # Clear any existing definitions
     Repo.delete_all(CardigannDefinition)
 
+    # Enable Cardigann feature flag for tests (unless specifically testing disabled state)
+    original_features = Application.get_env(:mydia, :features, [])
+    Application.put_env(:mydia, :features, cardigann_enabled: true)
+
     # Insert test definition
     {:ok, definition} =
       %CardigannDefinition{}
@@ -76,6 +80,10 @@ defmodule Mydia.Indexers.Adapter.CardigannTest do
         last_synced_at: DateTime.utc_now()
       })
       |> Repo.insert()
+
+    on_exit(fn ->
+      Application.put_env(:mydia, :features, original_features)
+    end)
 
     %{definition: definition}
   end
@@ -245,6 +253,106 @@ defmodule Mydia.Indexers.Adapter.CardigannTest do
       assert function_exported?(Cardigann, :test_connection, 1)
       assert function_exported?(Cardigann, :search, 3)
       assert function_exported?(Cardigann, :get_capabilities, 1)
+    end
+  end
+
+  describe "feature flag integration" do
+    test "search returns empty results when feature flag is disabled", %{definition: _definition} do
+      original = Application.get_env(:mydia, :features, [])
+
+      try do
+        # Disable feature flag
+        Application.put_env(:mydia, :features, cardigann_enabled: false)
+
+        config = %{
+          type: :cardigann,
+          name: "Test Indexer",
+          indexer_id: "test-indexer"
+        }
+
+        assert {:ok, []} = Cardigann.search(config, "test query")
+      after
+        Application.put_env(:mydia, :features, original)
+      end
+    end
+
+    test "search executes normally when feature flag is enabled", %{definition: _definition} do
+      original = Application.get_env(:mydia, :features, [])
+
+      try do
+        # Enable feature flag
+        Application.put_env(:mydia, :features, cardigann_enabled: true)
+
+        config = %{
+          type: :cardigann,
+          name: "Test Indexer",
+          indexer_id: "test-indexer"
+        }
+
+        # Should proceed to search (will fail with connection error in test env)
+        result = Cardigann.search(config, "test query")
+
+        case result do
+          {:ok, _results} ->
+            assert true
+
+          {:error, %Error{type: error_type}} ->
+            # Should fail with connection/search error, not config error
+            assert error_type in [:connection_failed, :search_failed]
+        end
+      after
+        Application.put_env(:mydia, :features, original)
+      end
+    end
+
+    test "test_connection returns error when feature flag is disabled", %{definition: _definition} do
+      original = Application.get_env(:mydia, :features, [])
+
+      try do
+        # Disable feature flag
+        Application.put_env(:mydia, :features, cardigann_enabled: false)
+
+        config = %{
+          type: :cardigann,
+          name: "Test Indexer",
+          indexer_id: "test-indexer"
+        }
+
+        assert {:error, %Error{type: :invalid_config, message: message}} =
+                 Cardigann.test_connection(config)
+
+        assert message =~ "disabled"
+      after
+        Application.put_env(:mydia, :features, original)
+      end
+    end
+
+    test "test_connection executes normally when feature flag is enabled", %{
+      definition: _definition
+    } do
+      original = Application.get_env(:mydia, :features, [])
+
+      try do
+        # Enable feature flag
+        Application.put_env(:mydia, :features, cardigann_enabled: true)
+
+        config = %{
+          type: :cardigann,
+          name: "Test Indexer",
+          indexer_id: "test-indexer"
+        }
+
+        # Should proceed to test connection (will fail with connection error in test env)
+        result = Cardigann.test_connection(config)
+
+        case result do
+          {:ok, _info} -> assert true
+          {:error, %Error{type: :connection_failed}} -> assert true
+          other -> flunk("Unexpected result: #{inspect(other)}")
+        end
+      after
+        Application.put_env(:mydia, :features, original)
+      end
     end
   end
 end
