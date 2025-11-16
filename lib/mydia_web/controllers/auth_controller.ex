@@ -60,12 +60,17 @@ defmodule MydiaWeb.AuthController do
   Creates or updates the user, signs a JWT token, and redirects to the app.
   """
   def callback(%{assigns: %{ueberauth_failure: fails}} = conn, _params) do
+    require Logger
+    Logger.error("OIDC callback failure: #{inspect(fails)}")
+
     conn
     |> put_flash(:error, "Authentication failed: #{format_errors(fails.errors)}")
-    |> redirect(to: "/")
+    |> redirect(to: "/auth/login")
   end
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
+    require Logger
+
     case process_oidc_auth(auth) do
       {:ok, user} ->
         # Update last login timestamp
@@ -81,9 +86,11 @@ defmodule MydiaWeb.AuthController do
         |> redirect(to: "/")
 
       {:error, reason} ->
+        Logger.error("OIDC authentication failed: #{inspect(reason)}")
+
         conn
         |> put_flash(:error, "Authentication failed: #{inspect(reason)}")
-        |> redirect(to: "/")
+        |> redirect(to: "/auth/login")
     end
   end
 
@@ -171,10 +178,22 @@ defmodule MydiaWeb.AuthController do
     end
   end
 
-  # Format Ueberauth errors for display
+  # Format Ueberauth errors for display with detailed information
   defp format_errors(errors) do
     errors
-    |> Enum.map(fn error -> error.message end)
+    |> Enum.map(fn error ->
+      # Include both message and message_key for more context
+      case error do
+        %{message: msg, message_key: key} when key != nil ->
+          "#{msg} (#{key})"
+
+        %{message: msg} ->
+          msg
+
+        _ ->
+          inspect(error)
+      end
+    end)
     |> Enum.join(", ")
   end
 

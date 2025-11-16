@@ -6,6 +6,17 @@
         Sign in with your username and password.
       </p>
 
+      <%!-- Display flash messages --%>
+      <div :if={Phoenix.Flash.get(@flash, :error)} class="alert alert-error mb-4">
+        <.icon name="hero-exclamation-circle" class="size-5 shrink-0" />
+        <span>{Phoenix.Flash.get(@flash, :error)}</span>
+      </div>
+
+      <div :if={Phoenix.Flash.get(@flash, :info)} class="alert alert-info mb-4">
+        <.icon name="hero-information-circle" class="size-5 shrink-0" />
+        <span>{Phoenix.Flash.get(@flash, :info)}</span>
+      </div>
+
       <.form for={@changeset} action={~p"/auth/local/login"} id="login-form">
         <div class="form-control">
           <label class="label" for="user_username">
