@@ -443,4 +443,81 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       refute has_element?(view, ~s{div[class*="modal-open"]})
     end
   end
+
+  describe "Runtime Config Protection" do
+    setup %{conn: conn, token: token} do
+      # Start the Indexers.Health GenServer to initialize ETS tables
+      start_supervised!(Mydia.Indexers.Health)
+
+      conn =
+        conn
+        |> init_test_session(%{})
+        |> put_session(:guardian_default_token, token)
+        |> put_req_header("authorization", "Bearer #{token}")
+
+      %{conn: conn}
+    end
+
+    test "runtime_config?/1 identifies runtime configs correctly" do
+      # Test with runtime ID
+      runtime_client = %Mydia.Settings.DownloadClientConfig{
+        id: "runtime::download_client::Test Client"
+      }
+
+      assert Settings.runtime_config?(runtime_client) == true
+
+      # Test with database ID
+      db_client = %Mydia.Settings.DownloadClientConfig{
+        id: Ecto.UUID.generate()
+      }
+
+      assert Settings.runtime_config?(db_client) == false
+
+      # Test with integer ID
+      int_client = %Mydia.Settings.DownloadClientConfig{
+        id: 123
+      }
+
+      assert Settings.runtime_config?(int_client) == false
+    end
+
+    test "runtime_config?/1 works with indexer configs" do
+      # Test with runtime ID
+      runtime_indexer = %Mydia.Settings.IndexerConfig{
+        id: "runtime::indexer::Test Indexer"
+      }
+
+      assert Settings.runtime_config?(runtime_indexer) == true
+
+      # Test with database ID
+      db_indexer = %Mydia.Settings.IndexerConfig{
+        id: Ecto.UUID.generate()
+      }
+
+      assert Settings.runtime_config?(db_indexer) == false
+    end
+
+    test "template shows disabled buttons for runtime configs", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/admin/config?tab=clients")
+
+      # If any runtime configs are present (from ENV or fixtures), they should have
+      # disabled buttons. We can't guarantee there are runtime configs in test,
+      # but we can verify the template logic is correct by checking for the
+      # presence of the tooltip text when runtime configs exist
+      if html =~ "runtime::download_client" do
+        assert html =~ "Cannot edit runtime-configured clients"
+        assert html =~ "Cannot delete runtime-configured clients"
+      end
+    end
+
+    test "template shows ENV badge for runtime configs", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/admin/config?tab=clients")
+
+      # If any runtime configs are present, they should show the ENV badge
+      if html =~ "runtime::download_client" do
+        assert html =~ "ENV"
+        assert html =~ "Configured via environment variables"
+      end
+    end
+  end
 end

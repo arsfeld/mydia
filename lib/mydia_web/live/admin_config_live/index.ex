@@ -330,15 +330,26 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   @impl true
   def handle_event("edit_download_client", %{"id" => id}, socket) do
     client = Settings.get_download_client_config!(id)
-    changeset = DownloadClientConfig.changeset(client, %{})
 
-    {:noreply,
-     socket
-     |> assign(:show_download_client_modal, true)
-     |> assign(:download_client_form, to_form(changeset))
-     |> assign(:download_client_mode, :edit)
-     |> assign(:editing_download_client, client)
-     |> assign(:testing_download_client_connection, false)}
+    # Check if this is a runtime config and prevent editing
+    if Settings.runtime_config?(client) do
+      {:noreply,
+       socket
+       |> put_flash(
+         :error,
+         "Cannot edit runtime-configured download client. This client is configured via environment variables and is read-only in the UI."
+       )}
+    else
+      changeset = DownloadClientConfig.changeset(client, %{})
+
+      {:noreply,
+       socket
+       |> assign(:show_download_client_modal, true)
+       |> assign(:download_client_form, to_form(changeset))
+       |> assign(:download_client_mode, :edit)
+       |> assign(:editing_download_client, client)
+       |> assign(:testing_download_client_connection, false)}
+    end
   end
 
   @impl true
@@ -388,27 +399,37 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   def handle_event("delete_download_client", %{"id" => id}, socket) do
     client = Settings.get_download_client_config!(id)
 
-    case Settings.delete_download_client_config(client) do
-      {:ok, _client} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Download client deleted successfully")
-         |> load_configuration_data()}
+    # Check if this is a runtime config and prevent deletion
+    if Settings.runtime_config?(client) do
+      {:noreply,
+       socket
+       |> put_flash(
+         :error,
+         "Cannot delete runtime-configured download client. This client is configured via environment variables and is read-only in the UI."
+       )}
+    else
+      case Settings.delete_download_client_config(client) do
+        {:ok, _client} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Download client deleted successfully")
+           |> load_configuration_data()}
 
-      {:error, error} ->
-        MydiaLogger.log_error(:liveview, "Failed to delete download client",
-          error: error,
-          operation: :delete_download_client,
-          client_id: id,
-          client_name: client.name,
-          user_id: socket.assigns.current_user.id
-        )
+        {:error, error} ->
+          MydiaLogger.log_error(:liveview, "Failed to delete download client",
+            error: error,
+            operation: :delete_download_client,
+            client_id: id,
+            client_name: client.name,
+            user_id: socket.assigns.current_user.id
+          )
 
-        error_msg = MydiaLogger.user_error_message(:delete_download_client, error)
+          error_msg = MydiaLogger.user_error_message(:delete_download_client, error)
 
-        {:noreply,
-         socket
-         |> put_flash(:error, error_msg)}
+          {:noreply,
+           socket
+           |> put_flash(:error, error_msg)}
+      end
     end
   end
 
@@ -583,15 +604,26 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   @impl true
   def handle_event("edit_indexer", %{"id" => id}, socket) do
     indexer = Settings.get_indexer_config!(id)
-    changeset = IndexerConfig.changeset(indexer, %{})
 
-    {:noreply,
-     socket
-     |> assign(:show_indexer_modal, true)
-     |> assign(:indexer_form, to_form(changeset))
-     |> assign(:indexer_mode, :edit)
-     |> assign(:editing_indexer, indexer)
-     |> assign(:testing_indexer_connection, false)}
+    # Check if this is a runtime config and prevent editing
+    if Settings.runtime_config?(indexer) do
+      {:noreply,
+       socket
+       |> put_flash(
+         :error,
+         "Cannot edit runtime-configured indexer. This indexer is configured via environment variables and is read-only in the UI."
+       )}
+    else
+      changeset = IndexerConfig.changeset(indexer, %{})
+
+      {:noreply,
+       socket
+       |> assign(:show_indexer_modal, true)
+       |> assign(:indexer_form, to_form(changeset))
+       |> assign(:indexer_mode, :edit)
+       |> assign(:editing_indexer, indexer)
+       |> assign(:testing_indexer_connection, false)}
+    end
   end
 
   @impl true
@@ -638,27 +670,37 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   def handle_event("delete_indexer", %{"id" => id}, socket) do
     indexer = Settings.get_indexer_config!(id)
 
-    case Settings.delete_indexer_config(indexer) do
-      {:ok, _indexer} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Indexer deleted successfully")
-         |> load_configuration_data()}
+    # Check if this is a runtime config and prevent deletion
+    if Settings.runtime_config?(indexer) do
+      {:noreply,
+       socket
+       |> put_flash(
+         :error,
+         "Cannot delete runtime-configured indexer. This indexer is configured via environment variables and is read-only in the UI."
+       )}
+    else
+      case Settings.delete_indexer_config(indexer) do
+        {:ok, _indexer} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Indexer deleted successfully")
+           |> load_configuration_data()}
 
-      {:error, error} ->
-        MydiaLogger.log_error(:liveview, "Failed to delete indexer",
-          error: error,
-          operation: :delete_indexer,
-          indexer_id: id,
-          indexer_name: indexer.name,
-          user_id: socket.assigns.current_user.id
-        )
+        {:error, error} ->
+          MydiaLogger.log_error(:liveview, "Failed to delete indexer",
+            error: error,
+            operation: :delete_indexer,
+            indexer_id: id,
+            indexer_name: indexer.name,
+            user_id: socket.assigns.current_user.id
+          )
 
-        error_msg = MydiaLogger.user_error_message(:delete_indexer, error)
+          error_msg = MydiaLogger.user_error_message(:delete_indexer, error)
 
-        {:noreply,
-         socket
-         |> put_flash(:error, error_msg)}
+          {:noreply,
+           socket
+           |> put_flash(:error, error_msg)}
+      end
     end
   end
 
