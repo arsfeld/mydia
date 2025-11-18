@@ -128,6 +128,7 @@ defmodule MydiaWeb.AdminConfigLive.Index do
         {:ok, _setting} ->
           {:noreply,
            socket
+           |> put_flash(:info, "Setting updated successfully")
            |> load_configuration_data()}
 
         {:error, changeset} ->
