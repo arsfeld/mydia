@@ -66,7 +66,7 @@ defmodule Mydia.Downloads.Client.QBittorrent do
   def add_torrent(config, torrent, opts \\ []) do
     with {:ok, req} <- authenticate(config),
          {:ok, body} <- build_add_torrent_body(torrent, opts),
-         {:ok, response} <- HTTP.post(req, "/api/v2/torrents/add", body: body) do
+         {:ok, response} <- HTTP.post(req, "/api/v2/torrents/add", form: body) do
       case response.status do
         200 ->
           # qBittorrent returns "Ok." on success but doesn't immediately return the hash
