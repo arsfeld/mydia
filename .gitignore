@@ -35,6 +35,10 @@ mydia-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Playwright E2E test results
+/assets/e2e-results/
+/assets/test-results/
+
 # Database files
 *.db
 *.db-*
