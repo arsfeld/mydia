@@ -229,18 +229,34 @@ defmodule Mydia.CrashReporter do
   defp format_stacktrace(stacktrace) do
     Enum.map(stacktrace, fn entry ->
       case entry do
-        {module, function, arity, location} ->
+        {module, function, arity_or_args, location} when is_integer(arity_or_args) ->
           %{
             module: inspect(module),
-            function: "#{function}/#{arity}",
-            file: Keyword.get(location, :file) |> to_string(),
+            function: "#{function}/#{arity_or_args}",
+            file: format_file(Keyword.get(location, :file)),
             line: Keyword.get(location, :line)
           }
 
-        {module, function, arity} ->
+        {module, function, args, location} when is_list(args) ->
+          %{
+            module: inspect(module),
+            function: "#{function}/#{length(args)}",
+            file: format_file(Keyword.get(location, :file)),
+            line: Keyword.get(location, :line)
+          }
+
+        {module, function, arity} when is_integer(arity) ->
           %{
             module: inspect(module),
             function: "#{function}/#{arity}",
+            file: nil,
+            line: nil
+          }
+
+        {module, function, args} when is_list(args) ->
+          %{
+            module: inspect(module),
+            function: "#{function}/#{length(args)}",
             file: nil,
             line: nil
           }
@@ -255,6 +271,20 @@ defmodule Mydia.CrashReporter do
       end
     end)
   end
+
+  defp format_file(nil), do: nil
+  defp format_file(file) when is_binary(file), do: file
+
+  defp format_file(file) when is_list(file) do
+    # Try to convert charlist to string
+    case :unicode.characters_to_binary(file) do
+      {:error, _, _} -> inspect(file)
+      {:incomplete, _, _} -> inspect(file)
+      binary -> binary
+    end
+  end
+
+  defp format_file(file), do: inspect(file)
 
   defp get_current_stacktrace do
     try do
