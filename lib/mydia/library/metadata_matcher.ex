@@ -680,7 +680,8 @@ defmodule Mydia.Library.MetadataMatcher do
 
   # Convert database metadata to MediaMetadata struct
   # If metadata is nil, create a minimal struct from the media item
-  # If metadata is a map, convert it using from_api_response
+  # If metadata is already a MediaMetadata struct, return it as-is
+  # If metadata is a plain map, convert it using from_api_response
   defp convert_db_metadata(nil, item, media_type) do
     %MediaMetadata{
       provider_id: to_string(item.tmdb_id),
@@ -689,6 +690,10 @@ defmodule Mydia.Library.MetadataMatcher do
       title: item.title,
       year: item.year
     }
+  end
+
+  defp convert_db_metadata(%MediaMetadata{} = metadata, _item, _media_type) do
+    metadata
   end
 
   defp convert_db_metadata(metadata_map, item, media_type) when is_map(metadata_map) do
