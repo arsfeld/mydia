@@ -251,7 +251,7 @@ defmodule Mydia.DownloadsTest do
       end)
 
       # Also unregister the mock adapter so no clients are available at all
-      Mydia.Downloads.Client.Registry.unregister(:transmission)
+      Mydia.Downloads.Client.Registry.unregister(:qbittorrent)
 
       search_result = %SearchResult{
         title: "Test",
