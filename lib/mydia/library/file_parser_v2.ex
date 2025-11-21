@@ -97,13 +97,13 @@ defmodule Mydia.Library.FileParser.V2 do
     \b
   /xi
 
-  @hdr_pattern ~r/(?:\bHDR10\+|\b(?:DolbyVision|DoVi|HDR10|HDR)\b)/i
+  @hdr_pattern ~r/(?:\bHDR10\+|\b(?:DolbyVision|DoVi|DV|HDR10|HDR)\b)/i
 
   # Additional noise patterns
   @bit_depth_pattern ~r/\b(8|10|12)[\s-]?bits?\b/i
   @encoder_pattern ~r/[-_. ](NVENC|QSV|AMF|VCE|VideoToolbox)\b/i
-  @bracket_contents_pattern ~r/\[(HDR|HDR10|HDR10\+|DolbyVision|DoVi|10bit|8bit|x265|x264|HEVC|AVC|2160p|1080p|720p)[^\]]*\]/i
-  @extra_noise_pattern ~r/\b(PROPER|REPACK|INTERNAL|LIMITED|UNRATED|DIRECTORS?\.CUT|EXTENDED|THEATRICAL|AMZN|NF|HYBRID)\b/i
+  @bracket_contents_pattern ~r/\[(HDR|HDR10|HDR10\+|DolbyVision|DoVi|DV|10bit|8bit|x265|x264|HEVC|AVC|2160p|1080p|720p)[^\]]*\]/i
+  @extra_noise_pattern ~r/\b(PROPER|REPACK|INTERNAL|LIMITED|UNRATED|DIRECTORS?\.CUT|EXTENDED|THEATRICAL|AMZN|NF|ATVP|HYBRID)\b/i
   @audio_channels_pattern ~r/\b[257]\s+1\b/i
   @vmaf_pattern ~r/\bVMAF\d+(?:\.\d+)?\b/i
 
@@ -112,7 +112,8 @@ defmodule Mydia.Library.FileParser.V2 do
   @year_pattern_secondary ~r/[\s._-](19\d{2}|20\d{2})(?:[\s._-]|$)/
 
   # Release group pattern - hyphen, dot, or space prefix with optional site tag in brackets
-  @release_group_pattern ~r/[-.\s]([A-Z0-9]+)(?:\[[^\]]+\])?$/i
+  # Matches groups like "-GROUP", "-MeM.GP", "-GROUP[site]"
+  @release_group_pattern ~r/[-.\s]([A-Z0-9]+(?:[.\s][A-Z0-9]+)?)(?:\[[^\]]+\])?$/i
 
   # TV show patterns - defined as function to avoid module attribute issues
   defp tv_patterns do
@@ -433,14 +434,15 @@ defmodule Mydia.Library.FileParser.V2 do
       end
 
     # Look for the first occurrence of any quality marker pattern
+    # Note: @release_group_pattern is intentionally excluded here because it should be
+    # extracted last, not used as a marker for discarding episode titles
     quality_patterns = [
       @resolution_pattern,
       @source_pattern,
       @codec_pattern,
       @hdr_pattern,
       @audio_pattern,
-      @bit_depth_pattern,
-      @release_group_pattern
+      @bit_depth_pattern
     ]
 
     # Find the earliest match position among all quality patterns
@@ -642,7 +644,7 @@ defmodule Mydia.Library.FileParser.V2 do
   defp clean_title(text) do
     # Known quality markers that might slip through (case-insensitive)
     quality_markers =
-      ~w(uhd hdr hdr10 hdr10+ dolbyvision dovi remux atmos dts dd ddp eac3 truehd aac ac3 hevc avc xvid divx vp9 av1 nvenc web bluray bdrip brrip webrip webdl hdtv dvd dvdrip proper repack internal limited unrated extended theatrical amzn hybrid)
+      ~w(uhd hdr hdr10 hdr10+ dolbyvision dovi dv remux atmos dts dd ddp eac3 truehd aac ac3 hevc avc xvid divx vp9 av1 nvenc web bluray bdrip brrip webrip webdl hdtv dvd dvdrip proper repack internal limited unrated extended theatrical amzn nf atvp hybrid)
 
     text
     # Remove empty brackets/parentheses that remain after extraction
