@@ -502,7 +502,7 @@ defmodule MydiaWeb.DownloadsLive.Index do
   end
 
   defp format_progress(nil), do: 0.0
-  defp format_progress(progress), do: Float.round(progress, 1)
+  defp format_progress(progress), do: Float.round(progress * 1.0, 1)
 
   defp get_metadata_value(download, key) do
     # Convert metadata to struct for type-safe access
