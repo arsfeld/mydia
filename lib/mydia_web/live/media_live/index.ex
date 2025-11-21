@@ -33,6 +33,7 @@ defmodule MydiaWeb.MediaLive.Index do
      |> assign(:batch_edit_form, to_form(%{}, as: :batch_edit))
      |> assign(:scanning, false)
      |> assign(:scan_result, nil)
+     |> assign(:scan_progress, nil)
      |> stream(:media_items, [])}
   end
 
@@ -362,6 +363,7 @@ defmodule MydiaWeb.MediaLive.Index do
          socket
          |> assign(:scanning, true)
          |> assign(:scan_result, nil)
+         |> assign(:scan_progress, nil)
          |> put_flash(:info, "Library scan started...")}
 
       {:error, _reason} ->
@@ -388,7 +390,9 @@ defmodule MydiaWeb.MediaLive.Index do
 
     socket =
       if should_show do
-        assign(socket, :scanning, true)
+        socket
+        |> assign(:scanning, true)
+        |> assign(:scan_progress, nil)
       else
         socket
       end
@@ -432,6 +436,7 @@ defmodule MydiaWeb.MediaLive.Index do
 
         socket
         |> assign(:scanning, false)
+        |> assign(:scan_progress, nil)
         |> assign(:scan_result, %{
           new_files: new_files,
           modified_files: modified_files,
@@ -450,7 +455,19 @@ defmodule MydiaWeb.MediaLive.Index do
     {:noreply,
      socket
      |> assign(:scanning, false)
+     |> assign(:scan_progress, nil)
      |> put_flash(:error, "Library scan failed: #{error}")}
+  end
+
+  def handle_info({:library_scan_progress, progress}, socket) do
+    {:noreply, assign(socket, :scan_progress, progress)}
+  end
+
+  def handle_info(msg, socket) do
+    # Catch-all for unhandled PubSub messages to prevent crashes
+    require Logger
+    Logger.warning("Unhandled message in MediaLive.Index: #{inspect(msg)}")
+    {:noreply, socket}
   end
 
   defp load_media_items(socket, opts) do
