@@ -304,11 +304,24 @@ defmodule Mydia.Library.Scanner do
     end
   end
 
+  # Determines if a scanned file has been modified compared to the database record.
+  #
+  # A file is considered modified if:
+  # - The size has changed, OR
+  # - The file's modification time is newer than the last verification time
+  #
+  # For timestamp comparison, we use `verified_at` if available (when the file was last
+  # verified during a scan), falling back to `updated_at` if the file hasn't been verified yet.
+  #
+  # Note: We use Map.get/2 with || operator because Map.get/3 returns the actual value even
+  # if it's nil, not the default. The || operator properly falls back to updated_at when
+  # verified_at is nil or missing.
   defp file_modified?(scanned, existing) do
+    # Safely get verified_at, falling back to updated_at if verified_at is nil or missing
+    reference_time = Map.get(existing, :verified_at) || Map.get(existing, :updated_at)
+
     scanned.size != existing.size ||
-      DateTime.compare(
-        scanned.modified_at,
-        Map.get(existing, :verified_at, existing.updated_at)
-      ) == :gt
+      (not is_nil(reference_time) &&
+         DateTime.compare(scanned.modified_at, reference_time) == :gt)
   end
 end

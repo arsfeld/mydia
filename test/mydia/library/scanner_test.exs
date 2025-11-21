@@ -319,6 +319,76 @@ defmodule Mydia.Library.ScannerTest do
       assert length(changes.modified_files) == 1
     end
 
+    test "uses updated_at when verified_at is nil" do
+      scan_result = %{
+        files: [
+          %{path: "/media/movie1.mkv", size: 1000, modified_at: ~U[2024-01-02 12:00:00Z]}
+        ]
+      }
+
+      existing_files = [
+        %{
+          path: "/media/movie1.mkv",
+          size: 1000,
+          updated_at: ~U[2024-01-01 11:00:00Z],
+          verified_at: nil
+        }
+      ]
+
+      changes = Scanner.detect_changes(scan_result, existing_files)
+
+      assert length(changes.modified_files) == 1
+      assert hd(changes.modified_files).path == "/media/movie1.mkv"
+    end
+
+    test "does not mark as modified when verified_at is nil but timestamps match" do
+      scan_result = %{
+        files: [
+          %{path: "/media/movie1.mkv", size: 1000, modified_at: ~U[2024-01-01 11:00:00Z]}
+        ]
+      }
+
+      existing_files = [
+        %{
+          path: "/media/movie1.mkv",
+          size: 1000,
+          updated_at: ~U[2024-01-01 11:00:00Z],
+          verified_at: nil
+        }
+      ]
+
+      changes = Scanner.detect_changes(scan_result, existing_files)
+
+      assert changes.modified_files == []
+    end
+
+    test "treats files with nil timestamps as not modified if size matches" do
+      scan_result = %{
+        files: [
+          %{path: "/media/movie1.mkv", size: 1000, modified_at: ~U[2024-01-02 12:00:00Z]}
+        ]
+      }
+
+      # Edge case: both verified_at and updated_at are nil
+      # This shouldn't happen in production due to database constraints,
+      # but we handle it gracefully by treating the file as not modified
+      # if the size matches (no DateTime comparison is done)
+      existing_files = [
+        %{
+          path: "/media/movie1.mkv",
+          size: 1000,
+          updated_at: nil,
+          verified_at: nil
+        }
+      ]
+
+      changes = Scanner.detect_changes(scan_result, existing_files)
+
+      # File is not marked as modified because we can't reliably determine
+      # modification without a reference timestamp, and size matches
+      assert changes.modified_files == []
+    end
+
     test "returns empty changes when nothing changed" do
       files = [
         %{
