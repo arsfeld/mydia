@@ -2,7 +2,7 @@ defmodule Mydia.SettingsTest do
   use Mydia.DataCase, async: false
 
   alias Mydia.Settings
-  alias Mydia.Settings.QualityProfile
+  alias Mydia.Settings.{QualityProfile, DefaultMetadataPreferences}
 
   describe "ensure_default_quality_profiles/0" do
     test "creates default quality profiles when none exist" do
@@ -801,6 +801,1109 @@ defmodule Mydia.SettingsTest do
       # Cleanup
       File.rm_rf!(old_path)
       File.rm_rf!(new_path)
+    end
+  end
+
+  describe "enhanced quality profile operations" do
+    setup do
+      # Create a test profile with enhanced fields
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Test Enhanced Profile",
+          qualities: ["1080p", "720p"],
+          upgrades_allowed: true,
+          upgrade_until_quality: "1080p",
+          description: "Test profile with enhanced fields",
+          is_system: false,
+          version: 1,
+          quality_standards: %{
+            preferred_video_codecs: ["h264", "h265"],
+            preferred_resolutions: ["1080p"],
+            movie_min_size_mb: 2048,
+            movie_max_size_mb: 15360
+          },
+          metadata_preferences: %{
+            provider_priority: ["tvdb", "tmdb"],
+            preferred_language: "en",
+            fetch_posters: true
+          }
+        })
+
+      %{profile: profile}
+    end
+
+    test "list_quality_profiles with is_system filter", %{profile: _profile} do
+      # List user profiles
+      user_profiles = Settings.list_quality_profiles(is_system: false)
+      assert length(user_profiles) >= 1
+      assert Enum.all?(user_profiles, &(&1.is_system == false))
+
+      # List system profiles (default profiles have is_system: false by default)
+      system_profiles = Settings.list_quality_profiles(is_system: true)
+      assert Enum.all?(system_profiles, &(&1.is_system == true))
+    end
+
+    test "list_quality_profiles with version filter", %{profile: profile} do
+      # Create another profile with different version
+      {:ok, _profile2} =
+        Settings.create_quality_profile(%{
+          name: "Version 2 Profile",
+          qualities: ["720p"],
+          version: 2
+        })
+
+      # Filter by version
+      v1_profiles = Settings.list_quality_profiles(version: 1)
+      assert Enum.any?(v1_profiles, &(&1.id == profile.id))
+      assert Enum.all?(v1_profiles, &(&1.version == 1))
+
+      v2_profiles = Settings.list_quality_profiles(version: 2)
+      assert length(v2_profiles) >= 1
+      assert Enum.all?(v2_profiles, &(&1.version == 2))
+    end
+
+    test "list_quality_profiles with source_url filter" do
+      # Create profile with source URL
+      {:ok, profile_with_url} =
+        Settings.create_quality_profile(%{
+          name: "Imported Profile",
+          qualities: ["1080p"],
+          source_url: "https://example.com/profiles/hd.json"
+        })
+
+      # Filter by source_url
+      imported_profiles =
+        Settings.list_quality_profiles(source_url: "https://example.com/profiles/hd.json")
+
+      assert length(imported_profiles) == 1
+      assert List.first(imported_profiles).id == profile_with_url.id
+    end
+
+    test "clone_quality_profile creates a copy with new name", %{profile: profile} do
+      {:ok, cloned} = Settings.clone_quality_profile(profile, "Cloned Profile")
+
+      # Check that it's a different profile
+      assert cloned.id != profile.id
+
+      # Check that the name is different
+      assert cloned.name == "Cloned Profile"
+
+      # Check that other fields are copied
+      assert cloned.qualities == profile.qualities
+      assert cloned.upgrades_allowed == profile.upgrades_allowed
+      assert cloned.quality_standards == profile.quality_standards
+      assert cloned.metadata_preferences == profile.metadata_preferences
+
+      # Check that system fields are reset
+      assert cloned.is_system == false
+      assert cloned.version == 1
+      assert is_nil(cloned.source_url)
+      assert is_nil(cloned.customizations)
+    end
+
+    test "clone_quality_profile without name adds (Copy) suffix", %{profile: profile} do
+      {:ok, cloned} = Settings.clone_quality_profile(profile)
+
+      assert cloned.name == "Test Enhanced Profile (Copy)"
+    end
+
+    test "compare_quality_profile_versions detects changes", %{profile: profile1} do
+      # Create a modified version
+      {:ok, profile2} =
+        Settings.create_quality_profile(%{
+          name: "Test Enhanced Profile V2",
+          qualities: ["2160p", "1080p"],
+          upgrades_allowed: false,
+          version: 2,
+          quality_standards: %{
+            preferred_video_codecs: ["h265", "av1"],
+            movie_min_size_mb: 5000
+          }
+        })
+
+      comparison = Settings.compare_quality_profile_versions(profile1, profile2)
+
+      # Check changed fields
+      assert Map.has_key?(comparison.changed, :name)
+      assert Map.has_key?(comparison.changed, :qualities)
+      assert Map.has_key?(comparison.changed, :upgrades_allowed)
+      assert Map.has_key?(comparison.changed, :version)
+      assert Map.has_key?(comparison.changed, :quality_standards)
+
+      # Verify the actual changes
+      {old_name, new_name} = comparison.changed.name
+      assert old_name == "Test Enhanced Profile"
+      assert new_name == "Test Enhanced Profile V2"
+
+      {old_version, new_version} = comparison.changed.version
+      assert old_version == 1
+      assert new_version == 2
+    end
+
+    test "compare_quality_profile_versions detects added fields", %{profile: profile1} do
+      # Create profile without optional fields
+      {:ok, profile_basic} =
+        Settings.create_quality_profile(%{
+          name: "Basic Profile",
+          qualities: ["720p"]
+        })
+
+      comparison = Settings.compare_quality_profile_versions(profile_basic, profile1)
+
+      # Check added fields
+      assert Map.has_key?(comparison.added, :quality_standards)
+      assert Map.has_key?(comparison.added, :metadata_preferences)
+    end
+
+    test "compare_quality_profile_versions detects removed fields", %{profile: profile1} do
+      # Create profile without optional fields
+      {:ok, profile_basic} =
+        Settings.create_quality_profile(%{
+          name: "Basic Profile",
+          qualities: ["720p"]
+        })
+
+      comparison = Settings.compare_quality_profile_versions(profile1, profile_basic)
+
+      # Check removed fields
+      assert Map.has_key?(comparison.removed, :quality_standards)
+      assert Map.has_key?(comparison.removed, :metadata_preferences)
+    end
+  end
+
+  describe "quality_standards validation" do
+    test "validates preferred_video_codecs against allowed list" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_video_codecs: ["h264", "h265", "av1"]
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_video_codecs: ["invalid_codec"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates preferred_resolutions against allowed list" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Resolutions",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_resolutions: ["1080p", "720p"]
+          }
+        })
+
+      # Invalid resolution should fail validation
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Resolutions",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_resolutions: ["8K"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates video bitrate ranges" do
+      # Valid bitrate range
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_video_bitrate_mbps: 5.0,
+            max_video_bitrate_mbps: 50.0
+          }
+        })
+
+      # Invalid: min > max
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_video_bitrate_mbps: 50.0,
+            max_video_bitrate_mbps: 5.0
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+  end
+
+  describe "metadata_preferences validation" do
+    test "validates provider_priority is a list of valid providers" do
+      # Both strings and atoms should be accepted
+      {:ok, _profile1} =
+        Settings.create_quality_profile(%{
+          name: "Valid Provider Priority String",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            provider_priority: ["metadata_relay", "tvdb", "tmdb"]
+          }
+        })
+
+      {:ok, _profile2} =
+        Settings.create_quality_profile(%{
+          name: "Valid Provider Priority Atom",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            provider_priority: [:metadata_relay, :tvdb]
+          }
+        })
+
+      # Invalid provider names should be rejected
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Provider Priority",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            provider_priority: ["invalid_provider"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:metadata_preferences] != nil
+    end
+
+    test "validates language codes properly" do
+      # Both 2-char and locale codes should be accepted
+      {:ok, _profile1} =
+        Settings.create_quality_profile(%{
+          name: "Valid Language 2char",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            language: "en"
+          }
+        })
+
+      {:ok, _profile2} =
+        Settings.create_quality_profile(%{
+          name: "Valid Language Locale",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            language: "en-US"
+          }
+        })
+
+      # Invalid language codes should be rejected
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Language",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            language: "english"
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:metadata_preferences] != nil
+    end
+
+    test "validates boolean preferences" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Booleans",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            auto_fetch_enabled: true,
+            fallback_on_provider_failure: false,
+            skip_unavailable_providers: true
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Booleans",
+          qualities: ["1080p"],
+          metadata_preferences: %{
+            auto_fetch_enabled: "yes"
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:metadata_preferences] != nil
+    end
+  end
+
+  describe "enhanced quality_standards validation" do
+    test "validates preferred_video_codecs" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Video Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_video_codecs: ["h265", "h264", "av1"]
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Video Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_video_codecs: ["invalid_codec"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates preferred_audio_codecs" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Audio Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_audio_codecs: ["atmos", "truehd", "dts-hd"]
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Audio Codecs",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_audio_codecs: ["invalid_audio"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates preferred_audio_channels" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Audio Channels",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_audio_channels: ["7.1", "5.1", "2.0"]
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Audio Channels",
+          qualities: ["1080p"],
+          quality_standards: %{
+            preferred_audio_channels: ["11.1"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates resolution ranges with min/max" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Resolution Range",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_resolution: "720p",
+            max_resolution: "2160p",
+            preferred_resolutions: ["1080p"]
+          }
+        })
+
+      # Invalid: min > max
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Resolution Range",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_resolution: "2160p",
+            max_resolution: "720p"
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+
+      {message, _} = changeset.errors[:quality_standards]
+      assert message =~ "min_resolution"
+      assert message =~ "cannot be greater than max_resolution"
+    end
+
+    test "validates video bitrate ranges with preferred" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Video Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_video_bitrate_mbps: 5.0,
+            max_video_bitrate_mbps: 50.0,
+            preferred_video_bitrate_mbps: 15.0
+          }
+        })
+
+      # Invalid: preferred > max
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Video Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_video_bitrate_mbps: 5.0,
+            max_video_bitrate_mbps: 50.0,
+            preferred_video_bitrate_mbps: 100.0
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates audio bitrate ranges with preferred" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Audio Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_audio_bitrate_kbps: 128,
+            max_audio_bitrate_kbps: 768,
+            preferred_audio_bitrate_kbps: 320
+          }
+        })
+
+      # Invalid: preferred < min
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Audio Bitrates",
+          qualities: ["1080p"],
+          quality_standards: %{
+            min_audio_bitrate_kbps: 128,
+            max_audio_bitrate_kbps: 768,
+            preferred_audio_bitrate_kbps: 64
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates media-type-specific file sizes" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid Media Sizes",
+          qualities: ["1080p"],
+          quality_standards: %{
+            movie_min_size_mb: 2048,
+            movie_max_size_mb: 15360,
+            episode_min_size_mb: 512,
+            episode_max_size_mb: 4096
+          }
+        })
+
+      # Invalid: movie min > max
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid Movie Sizes",
+          qualities: ["1080p"],
+          quality_standards: %{
+            movie_min_size_mb: 15360,
+            movie_max_size_mb: 2048
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+
+      # Invalid: episode min > max
+      result2 =
+        Settings.create_quality_profile(%{
+          name: "Invalid Episode Sizes",
+          qualities: ["1080p"],
+          quality_standards: %{
+            episode_min_size_mb: 4096,
+            episode_max_size_mb: 512
+          }
+        })
+
+      assert {:error, changeset2} = result2
+      assert changeset2.errors[:quality_standards] != nil
+    end
+
+    test "validates HDR formats" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid HDR",
+          qualities: ["2160p"],
+          quality_standards: %{
+            hdr_formats: ["dolby_vision", "hdr10+", "hdr10"],
+            require_hdr: true
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid HDR",
+          qualities: ["2160p"],
+          quality_standards: %{
+            hdr_formats: ["invalid_hdr"]
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+
+    test "validates require_hdr is boolean" do
+      {:ok, _profile} =
+        Settings.create_quality_profile(%{
+          name: "Valid HDR Requirement",
+          qualities: ["2160p"],
+          quality_standards: %{
+            require_hdr: false
+          }
+        })
+
+      result =
+        Settings.create_quality_profile(%{
+          name: "Invalid HDR Requirement",
+          qualities: ["2160p"],
+          quality_standards: %{
+            require_hdr: "yes"
+          }
+        })
+
+      assert {:error, changeset} = result
+      assert changeset.errors[:quality_standards] != nil
+    end
+  end
+
+  describe "quality scoring" do
+    setup do
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Scoring Test Profile",
+          qualities: ["1080p", "2160p"],
+          quality_standards: %{
+            preferred_video_codecs: ["h265", "h264"],
+            preferred_audio_codecs: ["atmos", "truehd", "ac3"],
+            preferred_audio_channels: ["7.1", "5.1"],
+            min_resolution: "720p",
+            max_resolution: "2160p",
+            preferred_resolutions: ["1080p"],
+            preferred_sources: ["BluRay", "REMUX"],
+            min_video_bitrate_mbps: 5.0,
+            max_video_bitrate_mbps: 50.0,
+            preferred_video_bitrate_mbps: 15.0,
+            min_audio_bitrate_kbps: 128,
+            max_audio_bitrate_kbps: 768,
+            movie_min_size_mb: 2048,
+            movie_max_size_mb: 15360,
+            episode_min_size_mb: 512,
+            episode_max_size_mb: 4096,
+            hdr_formats: ["dolby_vision", "hdr10+"],
+            require_hdr: false
+          }
+        })
+
+      %{profile: profile}
+    end
+
+    test "scores perfect match as 100", %{profile: profile} do
+      media_attrs = %{
+        video_codec: "h265",
+        audio_codec: "atmos",
+        audio_channels: "7.1",
+        resolution: "1080p",
+        source: "BluRay",
+        video_bitrate_mbps: 15.0,
+        audio_bitrate_kbps: 320,
+        file_size_mb: 8192,
+        media_type: :movie,
+        hdr_format: "dolby_vision"
+      }
+
+      result = QualityProfile.score_media_file(profile, media_attrs)
+
+      assert result.score >= 95.0
+      assert result.violations == []
+      assert result.breakdown.video_codec == 100.0
+      assert result.breakdown.audio_codec == 100.0
+      assert result.breakdown.resolution == 100.0
+    end
+
+    test "scores second preference lower than first", %{profile: profile} do
+      first_pref = %{
+        video_codec: "h265",
+        resolution: "1080p",
+        media_type: :movie
+      }
+
+      second_pref = %{
+        video_codec: "h264",
+        resolution: "1080p",
+        media_type: :movie
+      }
+
+      result1 = QualityProfile.score_media_file(profile, first_pref)
+      result2 = QualityProfile.score_media_file(profile, second_pref)
+
+      assert result1.breakdown.video_codec > result2.breakdown.video_codec
+    end
+
+    test "scores within range appropriately", %{profile: profile} do
+      within_range = %{
+        video_bitrate_mbps: 20.0,
+        file_size_mb: 5000,
+        media_type: :movie,
+        resolution: "1080p"
+      }
+
+      result = QualityProfile.score_media_file(profile, within_range)
+
+      assert result.breakdown.video_bitrate >= 75.0
+      assert result.breakdown.file_size >= 75.0
+    end
+
+    test "penalizes values outside range", %{profile: profile} do
+      outside_range = %{
+        video_bitrate_mbps: 100.0,
+        file_size_mb: 30000,
+        media_type: :movie,
+        resolution: "1080p"
+      }
+
+      result = QualityProfile.score_media_file(profile, outside_range)
+
+      assert result.breakdown.video_bitrate <= 25.0
+      assert result.breakdown.file_size <= 25.0
+    end
+
+    test "detects resolution violations", %{profile: profile} do
+      below_min = %{
+        resolution: "480p",
+        media_type: :movie
+      }
+
+      result = QualityProfile.score_media_file(profile, below_min)
+
+      assert result.score == 0.0
+      assert length(result.violations) > 0
+      assert Enum.any?(result.violations, &String.contains?(&1, "below minimum"))
+    end
+
+    test "detects HDR requirement violations", %{profile: _profile} do
+      {:ok, hdr_profile} =
+        Settings.create_quality_profile(%{
+          name: "HDR Required",
+          qualities: ["2160p"],
+          quality_standards: %{
+            require_hdr: true
+          }
+        })
+
+      no_hdr = %{
+        resolution: "2160p",
+        media_type: :movie
+      }
+
+      result = QualityProfile.score_media_file(hdr_profile, no_hdr)
+
+      assert result.score == 0.0
+      assert length(result.violations) > 0
+      assert Enum.any?(result.violations, &String.contains?(&1, "HDR is required"))
+    end
+
+    test "differentiates between movie and episode sizes", %{profile: profile} do
+      movie_attrs = %{
+        file_size_mb: 8192,
+        media_type: :movie,
+        resolution: "1080p"
+      }
+
+      episode_attrs = %{
+        file_size_mb: 2048,
+        media_type: :episode,
+        resolution: "1080p"
+      }
+
+      movie_result = QualityProfile.score_media_file(profile, movie_attrs)
+      episode_result = QualityProfile.score_media_file(profile, episode_attrs)
+
+      # Both should score well within their respective ranges
+      assert movie_result.breakdown.file_size >= 75.0
+      assert episode_result.breakdown.file_size >= 75.0
+    end
+
+    test "returns 0 score and explanation when no quality_standards defined" do
+      {:ok, basic_profile} =
+        Settings.create_quality_profile(%{
+          name: "Basic No Standards",
+          qualities: ["1080p"]
+        })
+
+      result = QualityProfile.score_media_file(basic_profile, %{resolution: "1080p"})
+
+      assert result.score == 0.0
+      assert result.violations == ["No quality standards defined"]
+    end
+
+    test "handles missing media attributes gracefully", %{profile: profile} do
+      # Missing most attributes
+      minimal_attrs = %{
+        resolution: "1080p"
+      }
+
+      result = QualityProfile.score_media_file(profile, minimal_attrs)
+
+      # Should still compute a score based on available data
+      assert is_float(result.score)
+      assert is_map(result.breakdown)
+      assert result.breakdown.resolution == 100.0
+    end
+
+    test "scores audio bitrate separately from video bitrate", %{profile: profile} do
+      with_audio = %{
+        video_bitrate_mbps: 15.0,
+        audio_bitrate_kbps: 320,
+        resolution: "1080p",
+        media_type: :movie
+      }
+
+      result = QualityProfile.score_media_file(profile, with_audio)
+
+      assert result.breakdown.video_bitrate >= 90.0
+      assert result.breakdown.audio_bitrate >= 75.0
+    end
+
+    test "scores preferred values within 10% as very high", %{profile: profile} do
+      close_to_preferred = %{
+        video_bitrate_mbps: 14.5,
+        resolution: "1080p",
+        media_type: :movie
+      }
+
+      result = QualityProfile.score_media_file(profile, close_to_preferred)
+
+      assert result.breakdown.video_bitrate >= 95.0
+    end
+  end
+
+  describe "enhanced metadata_preferences validation" do
+    test "accepts valid metadata preferences with all fields" do
+      valid_prefs = %{
+        provider_priority: ["metadata_relay", "tvdb", "tmdb"],
+        field_providers: %{
+          "title" => "tvdb",
+          "overview" => "tmdb"
+        },
+        language: "en-US",
+        region: "US",
+        fallback_languages: ["en", "ja"],
+        auto_fetch_enabled: true,
+        auto_refresh_interval_hours: 168,
+        fallback_on_provider_failure: true,
+        skip_unavailable_providers: true,
+        conflict_resolution: "prefer_newer",
+        merge_strategy: "union"
+      }
+
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Test Profile with Metadata Prefs",
+          qualities: ["1080p"],
+          metadata_preferences: valid_prefs
+        })
+
+      assert profile.metadata_preferences == valid_prefs
+    end
+
+    test "accepts minimal metadata preferences" do
+      minimal_prefs = %{
+        provider_priority: ["metadata_relay"]
+      }
+
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Minimal Metadata Profile",
+          qualities: ["1080p"],
+          metadata_preferences: minimal_prefs
+        })
+
+      assert profile.metadata_preferences.provider_priority == ["metadata_relay"]
+    end
+
+    test "rejects invalid provider names in priority list" do
+      invalid_prefs = %{
+        provider_priority: ["invalid_provider", "metadata_relay"]
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Provider Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert Enum.any?(
+               errors_on(changeset).metadata_preferences,
+               &String.contains?(&1, "provider_priority must be a list of valid provider names")
+             )
+    end
+
+    test "rejects invalid provider names in field_providers" do
+      invalid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        field_providers: %{
+          "title" => "invalid_provider"
+        }
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Field Provider Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert Enum.any?(
+               errors_on(changeset).metadata_preferences,
+               &String.contains?(&1, "field_providers contains invalid provider names")
+             )
+    end
+
+    test "rejects invalid language codes" do
+      invalid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        language: "invalid"
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Language Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert Enum.any?(
+               errors_on(changeset).metadata_preferences,
+               &String.contains?(&1, "language must be a valid language code")
+             )
+    end
+
+    test "accepts valid locale codes" do
+      valid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        language: "ja-JP"
+      }
+
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Japanese Locale Profile",
+          qualities: ["1080p"],
+          metadata_preferences: valid_prefs
+        })
+
+      assert profile.metadata_preferences.language == "ja-JP"
+    end
+
+    test "rejects invalid region codes" do
+      invalid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        region: "USA"
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Region Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert Enum.any?(
+               errors_on(changeset).metadata_preferences,
+               &String.contains?(&1, "region must be a 2-letter ISO 3166-1 alpha-2 country code")
+             )
+    end
+
+    test "rejects invalid conflict_resolution values" do
+      invalid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        conflict_resolution: "invalid_strategy"
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Conflict Resolution Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert Enum.any?(
+               errors_on(changeset).metadata_preferences,
+               &String.contains?(&1, "conflict_resolution must be one of")
+             )
+    end
+
+    test "rejects non-positive refresh intervals" do
+      invalid_prefs = %{
+        provider_priority: ["metadata_relay"],
+        auto_refresh_interval_hours: 0
+      }
+
+      {:error, changeset} =
+        Settings.create_quality_profile(%{
+          name: "Invalid Interval Profile",
+          qualities: ["1080p"],
+          metadata_preferences: invalid_prefs
+        })
+
+      assert "auto_refresh_interval_hours must be a positive integer" in errors_on(changeset).metadata_preferences
+    end
+
+    test "accepts atom provider names" do
+      prefs_with_atoms = %{
+        provider_priority: [:metadata_relay, :tvdb]
+      }
+
+      {:ok, profile} =
+        Settings.create_quality_profile(%{
+          name: "Atom Provider Profile",
+          qualities: ["1080p"],
+          metadata_preferences: prefs_with_atoms
+        })
+
+      assert profile.metadata_preferences.provider_priority == [:metadata_relay, :tvdb]
+    end
+  end
+
+  describe "get_default_metadata_preferences/0" do
+    test "returns sensible defaults" do
+      defaults = Settings.get_default_metadata_preferences()
+
+      assert is_list(defaults.provider_priority)
+      assert "metadata_relay" in defaults.provider_priority
+      assert defaults.language == "en-US"
+      assert defaults.auto_fetch_enabled == true
+      assert defaults.auto_refresh_interval_hours == 168
+    end
+  end
+
+  describe "get_metadata_preferences_with_defaults/1" do
+    test "merges custom preferences with defaults" do
+      custom = %{language: "fr-FR", region: "FR"}
+      merged = Settings.get_metadata_preferences_with_defaults(custom)
+
+      assert merged.language == "fr-FR"
+      assert merged.region == "FR"
+      # Default values should still be present
+      assert is_list(merged.provider_priority)
+      assert merged.auto_fetch_enabled == true
+    end
+
+    test "overrides defaults completely for specified keys" do
+      custom = %{provider_priority: ["tvdb"]}
+      merged = Settings.get_metadata_preferences_with_defaults(custom)
+
+      # Should use custom priority, not merge with default
+      assert merged.provider_priority == ["tvdb"]
+    end
+  end
+
+  describe "get_field_provider/2" do
+    test "returns field-specific provider when defined" do
+      prefs = %{
+        provider_priority: ["metadata_relay", "tvdb"],
+        field_providers: %{"title" => "tvdb"}
+      }
+
+      assert Settings.get_field_provider(prefs, "title") == "tvdb"
+    end
+
+    test "returns first priority provider when no field override exists" do
+      prefs = %{
+        provider_priority: ["metadata_relay", "tvdb"],
+        field_providers: %{"title" => "tvdb"}
+      }
+
+      assert Settings.get_field_provider(prefs, "overview") == "metadata_relay"
+    end
+
+    test "returns first priority provider when field_providers is empty" do
+      prefs = %{
+        provider_priority: ["tvdb", "tmdb"],
+        field_providers: %{}
+      }
+
+      assert Settings.get_field_provider(prefs, "any_field") == "tvdb"
+    end
+
+    test "returns nil when no providers are configured" do
+      prefs = %{
+        provider_priority: [],
+        field_providers: %{}
+      }
+
+      assert Settings.get_field_provider(prefs, "any_field") == nil
+    end
+  end
+
+  describe "DefaultMetadataPreferences" do
+    test "default/0 returns complete preferences" do
+      defaults = DefaultMetadataPreferences.default()
+
+      assert defaults.provider_priority == ["metadata_relay", "tvdb", "tmdb"]
+      assert defaults.language == "en-US"
+      assert defaults.region == "US"
+      assert defaults.fallback_languages == ["en"]
+      assert defaults.auto_fetch_enabled == true
+      assert defaults.auto_refresh_interval_hours == 168
+      assert defaults.fallback_on_provider_failure == true
+      assert defaults.skip_unavailable_providers == true
+      assert defaults.conflict_resolution == "prefer_newer"
+      assert defaults.merge_strategy == "union"
+    end
+
+    test "anime_optimized/0 returns Japanese preferences" do
+      anime = DefaultMetadataPreferences.anime_optimized()
+
+      assert anime.language == "ja-JP"
+      assert anime.region == "JP"
+      assert "ja" in anime.fallback_languages
+    end
+
+    test "tv_optimized/0 includes TVDB field overrides" do
+      tv = DefaultMetadataPreferences.tv_optimized()
+
+      assert tv.field_providers["episode_name"] == "tvdb"
+      assert tv.field_providers["season_info"] == "tvdb"
+    end
+
+    test "movie_optimized/0 prioritizes TMDB" do
+      movie = DefaultMetadataPreferences.movie_optimized()
+
+      assert "tmdb" in movie.provider_priority
+      assert movie.field_providers["cast"] == "tmdb"
+      assert movie.field_providers["poster"] == "tmdb"
+    end
+
+    test "minimal/0 disables auto-fetch" do
+      minimal = DefaultMetadataPreferences.minimal()
+
+      assert minimal.auto_fetch_enabled == false
+      assert minimal.auto_refresh_interval_hours == 0
+      assert minimal.conflict_resolution == "manual"
     end
   end
 end
