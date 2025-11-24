@@ -8,47 +8,14 @@ A modern, self-hosted media management platform for tracking, organizing, and mo
 
 ## ✨ Features
 
-### Core Library Management
-
-- 📺 **Smart Media Library** – Track TV shows, movies, and episodes with rich metadata from TMDB/TVDB
-- 🔍 **Media Discovery** – Search and add content with automatic metadata matching and disambiguation
-- 📁 **Library Scanner** – Automatic scanning and import of existing media files
-- 🎯 **Advanced Filename Parser** – Intelligent extraction of titles, quality, codecs, and release groups using sequential pattern matching. Handles codec variations automatically (DDP5.1, DD5.1, x264, x.264) without maintenance
-- 🎬 **Detailed Media Pages** – View comprehensive information including cast, crew, seasons, and episodes
-- 📊 **Quality Profiles** – Customizable quality preferences for automated downloads
-
-### Download Management
-
-- ⬇️ **Download Client Integration** – Seamless connectivity with torrent clients (qBittorrent, Transmission) and Usenet clients (SABnzbd, NZBGet)
-- 🔎 **Indexer Support** – Integrated search via Prowlarr and Jackett for finding releases
-- 🤖 **Automatic Search & Download** – Background jobs to automatically find and download monitored content
-- 🎯 **Smart Release Ranking** – Pluggable scoring system to select the best matching releases
-- 📥 **Manual Search** – Browse and select specific releases from the UI
-- 📋 **Download Queue** – Real-time monitoring of active downloads with progress tracking
-- 🌐 **Usenet Support** – Native support for Usenet downloads with SABnzbd and NZBGet clients
-
-### Monitoring & Tracking
-
-- 🔔 **Release Calendar** – Track upcoming and past releases with timeline view
-- 👁️ **Episode Monitoring** – Monitor individual episodes, seasons, or entire series
-- 📊 **Missing Episodes** – Identify gaps in your library
-- ⏱️ **Background Jobs** – Automated scanning, searching, and importing with Oban
-
-### User Management & Access Control
-
-- 👥 **Role-Based Access** – Admin and guest user roles with appropriate permissions
-- 🎫 **Guest Request System** – Guests can browse media and submit requests for new content
-- ✅ **Request Approval Workflow** – Admins review and approve/reject guest requests with notes
-- 📊 **Request Tracking** – Users can monitor the status of their media requests
-- 🔐 **Multi-Auth Support** – Local authentication and OIDC/OpenID Connect integration
-- 🚀 **Auto-Promotion** – First OIDC user automatically promoted to admin role
-
-### System & Configuration
-
-- ⚙️ **Admin Dashboard** – System status, configuration management, and health monitoring
-- 🔧 **Flexible Configuration** – Environment variables, YAML files, or database settings with clear precedence
-- 🎨 **Modern UI** – Built with Phoenix LiveView, Tailwind CSS, and DaisyUI
-- 🐳 **Docker Ready** – Pre-built images for amd64 and arm64 platforms
+- 📺 **Unified Media Management** – Track both movies and TV shows with rich metadata from TMDB/TVDB
+- 🤖 **Automated Downloads** – Background search and download with quality profiles and smart release ranking
+- ⬇️ **Download Clients** – qBittorrent, Transmission, SABnzbd, and NZBGet support
+- 🔎 **Indexer Integration** – Search via Prowlarr and Jackett for finding releases
+- 👥 **Multi-User System** – Built-in admin/guest roles with request approval workflow
+- 🔐 **SSO Support** – Local authentication plus OIDC/OpenID Connect integration
+- 🔔 **Release Calendar** – Track upcoming releases and monitor episodes
+- 🎨 **Modern Real-Time UI** – Phoenix LiveView with instant updates and responsive design
 
 ## 🆚 Comparison with Radarr & Sonarr
 
