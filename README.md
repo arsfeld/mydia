@@ -47,6 +47,7 @@ For users familiar with **Profilarr** and advanced quality management in the Rad
 
 **What Mydia Has:**
 - ✅ **Built-in Quality Profiles** – 8 predefined profiles covering SD to Remux-2160p, fully customizable via Admin UI
+- ✅ **TRaSH Guides Presets** – Browse and import 12 curated profiles based on TRaSH Guides recommendations with one click
 - ✅ **Resolution Filtering** – Define allowed qualities per profile (360p through 2160p)
 - ✅ **Size Constraints** – Min/max file size limits per profile
 - ✅ **Source Preferences** – Prefer BluRay, WEB-DL, REMUX, etc.
@@ -57,7 +58,7 @@ For users familiar with **Profilarr** and advanced quality management in the Rad
 
 **What Mydia Doesn't Have (Yet):**
 - ❌ **Advanced Custom Formats** – No support for complex multi-condition formats like Profilarr/TRaSH Guides (planned)
-- ❌ **Profile Sync/Import** – Profiles are managed locally, no Git-based version control or remote database sync
+- ❌ **Profile Auto-Sync** – No Git-based version control or automatic remote preset updates
 - ❌ **Negative Scoring** – Can't penalize unwanted formats, only prefer/allow certain qualities
 - ❌ **Tag-Based Filtering** – No PROPER/REPACK preference or CAM/TS blocking (basic detection exists for naming)
 
