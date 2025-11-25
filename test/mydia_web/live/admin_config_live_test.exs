@@ -215,11 +215,12 @@ defmodule MydiaWeb.AdminConfigLiveTest do
 
     test "displays quality profiles section", %{view: view} do
       # Default profiles may exist, just verify the quality profiles section renders
-      assert has_element?(view, "h3", "Quality Profiles")
+      # The header is an h2 element, not h3
+      assert has_element?(view, "h2", "Quality Profiles")
     end
 
     test "displays existing quality profiles", %{conn: conn} do
-      {:ok, profile} =
+      {:ok, _profile} =
         Settings.create_quality_profile(%{
           name: "HD",
           qualities: ["720p", "1080p"],
@@ -233,9 +234,10 @@ defmodule MydiaWeb.AdminConfigLiveTest do
         })
 
       # Load the view to see the new profile
-      {:ok, view, _html} = live(conn, ~p"/admin/config?tab=quality")
+      {:ok, _view, html} = live(conn, ~p"/admin/config?tab=quality")
 
-      assert has_element?(view, "td", "HD")
+      # Quality profiles are displayed in list items with DaisyUI list components
+      assert html =~ "HD"
     end
 
     test "opens modal when clicking new profile button", %{view: view} do
@@ -261,7 +263,9 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       )
       |> render_submit()
 
-      assert has_element?(view, "td", "4K Ultra HD")
+      # Quality profiles are displayed in list items, not table cells
+      html = render(view)
+      assert html =~ "4K Ultra HD"
       refute has_element?(view, ~s{div[class*="modal-open"]})
     end
 
@@ -341,7 +345,9 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       )
       |> render_submit()
 
-      assert has_element?(view, "td", "qBittorrent")
+      # Download clients are displayed in list items, not table cells
+      html = render(view)
+      assert html =~ "qBittorrent"
       refute has_element?(view, ~s{div[class*="modal-open"]})
     end
   end
@@ -403,7 +409,9 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       )
       |> render_submit()
 
-      assert has_element?(view, "td", "Prowlarr")
+      # Indexers are displayed in list items, not table cells
+      html = render(view)
+      assert html =~ "Prowlarr"
       refute has_element?(view, ~s{div[class*="modal-open"]})
     end
   end
@@ -433,8 +441,8 @@ defmodule MydiaWeb.AdminConfigLiveTest do
 
       # Should not crash with UndefinedFunctionError or :atom.cast/1 error
       assert html =~ "Setting updated successfully"
-      # Verify the settings table still renders without error
-      assert has_element?(view, "table")
+      # Verify the settings list still renders without error (UI uses DaisyUI list, not table)
+      assert has_element?(view, "ul.list")
     end
 
     test "toggles crash reporting setting without category validation error", %{
@@ -540,7 +548,9 @@ defmodule MydiaWeb.AdminConfigLiveTest do
       # Wait for LiveView to process the update (important for CI)
       Process.sleep(100)
 
-      assert has_element?(view, "td", test_dir)
+      # Library paths are displayed in list items, not table cells
+      html = render(view)
+      assert html =~ test_dir
       refute has_element?(view, ~s{div[class*="modal-open"]})
     end
   end

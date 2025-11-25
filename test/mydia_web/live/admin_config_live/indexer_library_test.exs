@@ -215,7 +215,8 @@ defmodule MydiaWeb.AdminConfigLive.IndexerLibraryTest do
       set_cardigann_feature_flag(true)
 
       {:ok, _view, html} = live(conn, ~p"/admin/config?tab=indexers")
-      assert html =~ "Cardigann Library"
+      # The link text is "Cardigann" (without "Library" suffix)
+      assert html =~ "Cardigann"
       assert html =~ ~p"/admin/config/indexers/library"
     end
 
