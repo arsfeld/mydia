@@ -3,44 +3,39 @@ defmodule Mydia.Repo.Migrations.CreateSubtitleTables do
 
   def change do
     # Subtitles table: stores downloaded subtitle metadata and file paths
-    # Tracks which subtitles are already downloaded and their properties
-    execute(
-      """
-      CREATE TABLE subtitles (
-        id TEXT PRIMARY KEY NOT NULL,
-        media_file_id TEXT NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
-        language TEXT NOT NULL,
-        provider TEXT NOT NULL,
-        subtitle_hash TEXT NOT NULL UNIQUE,
-        file_path TEXT NOT NULL,
-        sync_offset INTEGER DEFAULT 0,
-        format TEXT NOT NULL,
-        rating REAL,
-        download_count INTEGER,
-        hearing_impaired INTEGER NOT NULL DEFAULT 0 CHECK(hearing_impaired IN (0, 1)),
-        inserted_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-      """,
-      "DROP TABLE IF EXISTS subtitles"
-    )
+    create table(:subtitles, primary_key: false) do
+      add :id, :binary_id, primary_key: true
 
+      add :media_file_id, references(:media_files, type: :binary_id, on_delete: :delete_all),
+        null: false
+
+      add :language, :string, null: false
+      add :provider, :string, null: false
+      add :subtitle_hash, :string, null: false
+      add :file_path, :string, null: false
+      add :sync_offset, :integer, default: 0
+      add :format, :string, null: false
+      add :rating, :float
+      add :download_count, :integer
+      add :hearing_impaired, :boolean, null: false, default: false
+
+      timestamps(type: :utc_datetime)
+    end
+
+    create unique_index(:subtitles, [:subtitle_hash])
     create index(:subtitles, [:media_file_id])
     create index(:subtitles, [:language])
 
     # Media hashes table: stores OpenSubtitles moviehash for each media file
     # Enables fast hash-based subtitle matching
-    execute(
-      """
-      CREATE TABLE media_hashes (
-        media_file_id TEXT PRIMARY KEY NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
-        opensubtitles_hash TEXT NOT NULL,
-        file_size INTEGER NOT NULL,
-        calculated_at TEXT NOT NULL
-      )
-      """,
-      "DROP TABLE IF EXISTS media_hashes"
-    )
+    create table(:media_hashes, primary_key: false) do
+      add :media_file_id, references(:media_files, type: :binary_id, on_delete: :delete_all),
+        primary_key: true
+
+      add :opensubtitles_hash, :string, null: false
+      add :file_size, :bigint, null: false
+      add :calculated_at, :utc_datetime, null: false
+    end
 
     create index(:media_hashes, [:opensubtitles_hash])
   end

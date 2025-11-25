@@ -2,6 +2,7 @@ defmodule Mydia.Repo.Migrations.CreateMediaRequests do
   use Ecto.Migration
 
   def change do
+    # Note: status and media_type validation is enforced by Ecto changeset
     create table(:media_requests, primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :media_type, :string, null: false
@@ -34,59 +35,5 @@ defmodule Mydia.Repo.Migrations.CreateMediaRequests do
     # Composite index for duplicate detection
     create index(:media_requests, [:tmdb_id, :status])
     create index(:media_requests, [:imdb_id, :status])
-
-    # Add CHECK constraint for valid status values (SQLite)
-    execute(
-      """
-      CREATE TRIGGER validate_media_request_status_insert
-      BEFORE INSERT ON media_requests
-      FOR EACH ROW
-      WHEN NEW.status NOT IN ('pending', 'approved', 'rejected')
-      BEGIN
-        SELECT RAISE(ABORT, 'Invalid status value');
-      END;
-      """,
-      "DROP TRIGGER IF EXISTS validate_media_request_status_insert;"
-    )
-
-    execute(
-      """
-      CREATE TRIGGER validate_media_request_status_update
-      BEFORE UPDATE ON media_requests
-      FOR EACH ROW
-      WHEN NEW.status NOT IN ('pending', 'approved', 'rejected')
-      BEGIN
-        SELECT RAISE(ABORT, 'Invalid status value');
-      END;
-      """,
-      "DROP TRIGGER IF EXISTS validate_media_request_status_update;"
-    )
-
-    # Add CHECK constraint for valid media_type values (SQLite)
-    execute(
-      """
-      CREATE TRIGGER validate_media_type_insert
-      BEFORE INSERT ON media_requests
-      FOR EACH ROW
-      WHEN NEW.media_type NOT IN ('movie', 'tv_show')
-      BEGIN
-        SELECT RAISE(ABORT, 'Invalid media_type value');
-      END;
-      """,
-      "DROP TRIGGER IF EXISTS validate_media_type_insert;"
-    )
-
-    execute(
-      """
-      CREATE TRIGGER validate_media_type_update
-      BEFORE UPDATE ON media_requests
-      FOR EACH ROW
-      WHEN NEW.media_type NOT IN ('movie', 'tv_show')
-      BEGIN
-        SELECT RAISE(ABORT, 'Invalid media_type value');
-      END;
-      """,
-      "DROP TRIGGER IF EXISTS validate_media_type_update;"
-    )
   end
 end

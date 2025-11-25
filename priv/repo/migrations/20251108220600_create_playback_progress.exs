@@ -2,30 +2,32 @@ defmodule Mydia.Repo.Migrations.CreatePlaybackProgress do
   use Ecto.Migration
 
   def change do
-    execute(
-      """
-      CREATE TABLE playback_progress (
-        id TEXT PRIMARY KEY NOT NULL,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        media_item_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
-        episode_id TEXT REFERENCES episodes(id) ON DELETE CASCADE,
-        position_seconds INTEGER NOT NULL,
-        duration_seconds INTEGER NOT NULL,
-        completion_percentage REAL NOT NULL,
-        watched INTEGER NOT NULL DEFAULT 0,
-        last_watched_at TEXT NOT NULL,
-        inserted_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        CHECK(
-          (media_item_id IS NOT NULL AND episode_id IS NULL) OR
-          (media_item_id IS NULL AND episode_id IS NOT NULL)
-        ),
-        UNIQUE(user_id, media_item_id),
-        UNIQUE(user_id, episode_id)
-      )
-      """,
-      "DROP TABLE IF EXISTS playback_progress"
-    )
+    # Note: The constraint ensuring exactly one of media_item_id or episode_id is set
+    # is enforced by Ecto changeset validation
+    create table(:playback_progress, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :user_id, references(:users, type: :binary_id, on_delete: :delete_all), null: false
+      add :media_item_id, references(:media_items, type: :binary_id, on_delete: :delete_all)
+      add :episode_id, references(:episodes, type: :binary_id, on_delete: :delete_all)
+      add :position_seconds, :integer, null: false
+      add :duration_seconds, :integer, null: false
+      add :completion_percentage, :float, null: false
+      add :watched, :boolean, null: false, default: false
+      add :last_watched_at, :utc_datetime, null: false
+
+      timestamps(type: :utc_datetime)
+    end
+
+    # Unique constraints for user + media_item and user + episode
+    create unique_index(:playback_progress, [:user_id, :media_item_id],
+             where: "media_item_id IS NOT NULL",
+             name: :playback_progress_user_media_item_unique
+           )
+
+    create unique_index(:playback_progress, [:user_id, :episode_id],
+             where: "episode_id IS NOT NULL",
+             name: :playback_progress_user_episode_unique
+           )
 
     create index(:playback_progress, [:user_id])
     create index(:playback_progress, [:media_item_id])

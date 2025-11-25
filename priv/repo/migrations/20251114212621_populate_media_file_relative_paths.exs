@@ -56,10 +56,10 @@ defmodule Mydia.Repo.Migrations.PopulateMediaFileRelativePaths do
 
   def down do
     # Rollback: Clear library_path_id and relative_path for all media files
-    execute """
-    UPDATE media_files
-    SET library_path_id = NULL, relative_path = NULL;
-    """
+    import Ecto.Query
+
+    from("media_files")
+    |> repo().update_all(set: [library_path_id: nil, relative_path: nil])
 
     IO.puts("""
 

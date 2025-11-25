@@ -1,18 +1,35 @@
 defmodule Mydia.Repo.Migrations.PopulateEpisodeAirDatesFromMetadata do
+  @moduledoc """
+  Populates air_date from the metadata JSON field for all episodes.
+  Database-agnostic implementation using Elixir code.
+  """
   use Ecto.Migration
   import Ecto.Query
-  alias Mydia.Repo
 
   def up do
-    # For SQLite, we'll use SQL to extract JSON and update the air_date column
-    # This populates air_date from the metadata JSON field for all episodes
-    execute """
-    UPDATE episodes
-    SET air_date = json_extract(metadata, '$.air_date')
-    WHERE air_date IS NULL
-      AND json_extract(metadata, '$.air_date') IS NOT NULL
-      AND json_extract(metadata, '$.air_date') != ''
-    """
+    # Fetch all episodes with metadata but no air_date
+    episodes =
+      from(e in "episodes",
+        where: is_nil(e.air_date) and not is_nil(e.metadata),
+        select: %{id: e.id, metadata: e.metadata}
+      )
+      |> repo().all()
+
+    # Update each episode's air_date from metadata
+    Enum.each(episodes, fn episode ->
+      case Jason.decode(episode.metadata || "{}") do
+        {:ok, metadata} when is_map(metadata) ->
+          air_date = metadata["air_date"]
+
+          if air_date && air_date != "" do
+            from(e in "episodes", where: e.id == ^episode.id)
+            |> repo().update_all(set: [air_date: air_date])
+          end
+
+        _ ->
+          :ok
+      end
+    end)
   end
 
   def down do

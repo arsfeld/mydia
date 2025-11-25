@@ -16,6 +16,6 @@ defmodule Mydia.Repo.Migrations.AddEnhancedFieldsToQualityProfiles do
     # Add indexes for commonly queried fields
     create index(:quality_profiles, [:is_system])
     create index(:quality_profiles, [:version])
-    create index(:quality_profiles, [:name])
+    # name index already exists from create_quality_profiles migration (as unique index)
   end
 end

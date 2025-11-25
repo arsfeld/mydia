@@ -2,33 +2,27 @@ defmodule Mydia.Repo.Migrations.CreateMediaFiles do
   use Ecto.Migration
 
   def change do
-    execute(
-      """
-      CREATE TABLE media_files (
-        id TEXT PRIMARY KEY NOT NULL,
-        media_item_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
-        episode_id TEXT REFERENCES episodes(id) ON DELETE CASCADE,
-        path TEXT NOT NULL UNIQUE,
-        size INTEGER,
-        quality_profile_id TEXT REFERENCES quality_profiles(id),
-        resolution TEXT,
-        codec TEXT,
-        hdr_format TEXT,
-        audio_codec TEXT,
-        bitrate INTEGER,
-        verified_at TEXT,
-        metadata TEXT,
-        inserted_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        CHECK(
-          (media_item_id IS NOT NULL AND episode_id IS NULL) OR
-          (media_item_id IS NULL AND episode_id IS NOT NULL)
-        )
-      )
-      """,
-      "DROP TABLE IF EXISTS media_files"
-    )
+    # Note: The constraint ensuring exactly one of media_item_id or episode_id is set
+    # is enforced by Ecto changeset validation
+    create table(:media_files, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :media_item_id, references(:media_items, type: :binary_id, on_delete: :delete_all)
+      add :episode_id, references(:episodes, type: :binary_id, on_delete: :delete_all)
+      add :path, :string, null: false
+      add :size, :bigint
+      add :quality_profile_id, references(:quality_profiles, type: :binary_id)
+      add :resolution, :string
+      add :codec, :string
+      add :hdr_format, :string
+      add :audio_codec, :string
+      add :bitrate, :integer
+      add :verified_at, :utc_datetime
+      add :metadata, :text
 
+      timestamps(type: :utc_datetime)
+    end
+
+    create unique_index(:media_files, [:path])
     create index(:media_files, [:media_item_id])
     create index(:media_files, [:episode_id])
   end

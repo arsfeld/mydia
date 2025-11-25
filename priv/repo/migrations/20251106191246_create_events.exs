@@ -2,23 +2,19 @@ defmodule Mydia.Repo.Migrations.CreateEvents do
   use Ecto.Migration
 
   def change do
-    execute(
-      """
-      CREATE TABLE events (
-        id TEXT PRIMARY KEY NOT NULL,
-        category TEXT NOT NULL,
-        type TEXT NOT NULL,
-        actor_type TEXT,
-        actor_id TEXT,
-        resource_type TEXT,
-        resource_id TEXT,
-        severity TEXT NOT NULL DEFAULT 'info',
-        metadata TEXT,
-        inserted_at TEXT NOT NULL
-      )
-      """,
-      "DROP TABLE IF EXISTS events"
-    )
+    create table(:events, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :category, :string, null: false
+      add :type, :string, null: false
+      add :actor_type, :string
+      add :actor_id, :binary_id
+      add :resource_type, :string
+      add :resource_id, :binary_id
+      add :severity, :string, null: false, default: "info"
+      add :metadata, :text
+
+      timestamps(type: :utc_datetime, updated_at: false)
+    end
 
     # Index on type for filtering by specific event types
     create index(:events, [:type])

@@ -20,8 +20,8 @@ defmodule Mydia.Repo.Migrations.RemoveRulesFieldFromQualityProfiles do
 
   def down do
     alter table(:quality_profiles) do
-      # Re-add rules field for rollback, defaulting to empty map
-      add :rules, :map, default: "{}"
+      # Re-add rules field for rollback (original type was :text for JSON storage)
+      add :rules, :text
     end
   end
 end
