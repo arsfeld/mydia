@@ -505,24 +505,34 @@ defmodule MydiaWeb.MediaLive.Show.Components do
 
   def episode_file_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-4 py-1">
+    <div class="flex items-start justify-between gap-4 py-1">
       <%!-- File info --%>
-      <div class="flex items-center gap-3 min-w-0 flex-1">
-        <.icon name="hero-document" class="w-4 h-4 text-base-content/50 flex-shrink-0" />
-        <% absolute_path = Mydia.Library.MediaFile.absolute_path(@file) %>
-        <span class="font-mono text-sm truncate" title={absolute_path}>
-          {Path.basename(absolute_path)}
-        </span>
-        <span class="badge badge-primary badge-sm">{@file.resolution || "?"}</span>
-        <%= if @file.codec do %>
-          <span class="badge badge-outline badge-xs">{@file.codec}</span>
-        <% end %>
-        <%= if @file.audio_codec do %>
-          <span class="badge badge-outline badge-xs">{@file.audio_codec}</span>
-        <% end %>
-        <span class="text-xs text-base-content/60">
-          {format_file_size(@file.size)}
-        </span>
+      <div class="flex flex-col gap-1 min-w-0 flex-1">
+        <%!-- Filename row --%>
+        <div class="flex items-center gap-2">
+          <.icon name="hero-document" class="w-4 h-4 text-base-content/50 flex-shrink-0" />
+          <% absolute_path = Mydia.Library.MediaFile.absolute_path(@file) %>
+          <span class="font-mono text-sm truncate" title={absolute_path}>
+            {Path.basename(absolute_path)}
+          </span>
+        </div>
+        <%!-- Technical details row --%>
+        <div class="flex flex-wrap items-center gap-1.5 pl-6 text-xs">
+          <span class="badge badge-primary badge-xs">{@file.resolution || "?"}</span>
+          <%= if @file.codec do %>
+            <span class="text-base-content/60" title={@file.codec}>
+              {shorten_codec(@file.codec)}
+            </span>
+          <% end %>
+          <%= if @file.audio_codec do %>
+            <span class="text-base-content/60" title={@file.audio_codec}>
+              {shorten_codec(@file.audio_codec)}
+            </span>
+          <% end %>
+          <span class="text-base-content/60">
+            {format_file_size(@file.size)}
+          </span>
+        </div>
       </div>
       <%!-- File actions --%>
       <div class="flex items-center gap-1 flex-shrink-0">
@@ -556,6 +566,18 @@ defmodule MydiaWeb.MediaLive.Show.Components do
       </div>
     </div>
     """
+  end
+
+  # Shorten long codec names for display
+  defp shorten_codec(nil), do: nil
+
+  defp shorten_codec(codec) do
+    codec
+    |> String.replace(~r/\s*\([^)]*\)/, "")
+    |> String.replace("Dolby Digital Plus", "DD+")
+    |> String.replace("Dolby Digital", "DD")
+    |> String.replace("DTS-HD MA", "DTS-MA")
+    |> String.replace("TrueHD", "TrueHD")
   end
 
   @doc """
