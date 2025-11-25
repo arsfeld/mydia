@@ -41,6 +41,8 @@ defmodule Mydia.Indexers.ReleaseRanker do
   - `:preferred_tags` - List of strings that boost scores
   """
 
+  require Logger
+
   alias Mydia.Indexers.{QualityParser, SearchResult}
   alias Mydia.Indexers.Structs.{RankedResult, ScoreBreakdown}
 
@@ -98,13 +100,36 @@ defmodule Mydia.Indexers.ReleaseRanker do
   def rank_all(results, opts \\ []) do
     preferred_qualities = Keyword.get(opts, :preferred_qualities)
 
-    results
-    |> filter_acceptable(opts)
-    |> Enum.map(fn result ->
-      breakdown = calculate_score_breakdown(result, opts)
-      RankedResult.new(%{result: result, score: breakdown.total, breakdown: breakdown})
+    Logger.info(
+      "[ReleaseRanker] rank_all called with opts: preferred_qualities=#{inspect(preferred_qualities)}, " <>
+        "min_seeders=#{inspect(Keyword.get(opts, :min_seeders))}, " <>
+        "size_range=#{inspect(Keyword.get(opts, :size_range))}"
+    )
+
+    ranked =
+      results
+      |> filter_acceptable(opts)
+      |> Enum.map(fn result ->
+        breakdown = calculate_score_breakdown(result, opts)
+        RankedResult.new(%{result: result, score: breakdown.total, breakdown: breakdown})
+      end)
+      |> sort_by_score_and_preferences(preferred_qualities)
+
+    # Log the top 5 results after sorting
+    top_5 = Enum.take(ranked, 5)
+
+    Logger.info("[ReleaseRanker] Top 5 results after sorting by preferences:")
+
+    Enum.each(top_5, fn %{result: result, score: score} ->
+      resolution = if result.quality, do: result.quality.resolution, else: "unknown"
+      quality_idx = quality_preference_index(result, preferred_qualities)
+
+      Logger.info(
+        "  - [idx=#{quality_idx}] #{resolution} | score=#{Float.round(score, 1)} | #{String.slice(result.title, 0, 60)}"
+      )
     end)
-    |> sort_by_score_and_preferences(preferred_qualities)
+
+    ranked
   end
 
   @doc """
@@ -131,11 +156,43 @@ defmodule Mydia.Indexers.ReleaseRanker do
     size_range = Keyword.get(opts, :size_range, @default_size_range)
     blocked_tags = Keyword.get(opts, :blocked_tags, [])
 
-    results
-    |> Enum.filter(&meets_seeder_minimum?(&1, min_seeders))
-    |> Enum.filter(&meets_ratio_minimum?(&1, min_ratio))
-    |> Enum.filter(&within_size_range?(&1, size_range))
-    |> Enum.filter(&not_blocked?(&1, blocked_tags))
+    Enum.filter(results, fn result ->
+      cond do
+        not meets_seeder_minimum?(result, min_seeders) ->
+          Logger.info(
+            "[ReleaseRanker] Filtered out (seeders #{result.seeders} < #{min_seeders}): #{result.title}"
+          )
+
+          false
+
+        min_ratio != nil and not meets_ratio_minimum?(result, min_ratio) ->
+          total = result.seeders + result.leechers
+          ratio = if total > 0, do: Float.round(result.seeders / total * 100, 1), else: 0.0
+
+          Logger.info(
+            "[ReleaseRanker] Filtered out (ratio #{ratio}% < #{Float.round(min_ratio * 100, 1)}%): #{result.title}"
+          )
+
+          false
+
+        not within_size_range?(result, size_range) ->
+          {min_mb, max_mb} = size_range
+          size_mb = Float.round(bytes_to_mb(result.size), 1)
+
+          Logger.info(
+            "[ReleaseRanker] Filtered out (size #{size_mb} MB not in #{min_mb}-#{max_mb} MB): #{result.title}"
+          )
+
+          false
+
+        not not_blocked?(result, blocked_tags) ->
+          Logger.info("[ReleaseRanker] Filtered out (blocked tag): #{result.title}")
+          false
+
+        true ->
+          true
+      end
+    end)
   end
 
   ## Private Functions - Filtering
@@ -182,12 +239,32 @@ defmodule Mydia.Indexers.ReleaseRanker do
 
     # Weighted scoring
     # Quality: 60%, Seeders: 25%, Size: 10%, Age: 5%
-    total =
-      quality_score * 0.6 +
-        seeder_score * 0.25 +
-        size_score * 0.1 +
-        age_score * 0.05 +
-        tag_bonus
+    weighted_quality = quality_score * 0.6
+    weighted_seeders = seeder_score * 0.25
+    weighted_size = size_score * 0.1
+    weighted_age = age_score * 0.05
+
+    total = weighted_quality + weighted_seeders + weighted_size + weighted_age + tag_bonus
+
+    size_mb = bytes_to_mb(result.size)
+    total_peers = result.seeders + result.leechers
+    seeder_ratio = if total_peers > 0, do: result.seeders / total_peers, else: 0.0
+
+    Logger.info("""
+    [ReleaseRanker] Score breakdown for: #{result.title}
+      Raw values:
+        - Size: #{Float.round(size_mb, 1)} MB
+        - Seeders: #{result.seeders}, Leechers: #{result.leechers}
+        - Seeder ratio: #{Float.round(seeder_ratio * 100, 1)}%
+        - Quality: #{inspect(result.quality)}
+      Component scores (raw -> weighted):
+        - Quality:  #{Float.round(quality_score, 2)} -> #{Float.round(weighted_quality, 2)} (60%)
+        - Seeders:  #{Float.round(seeder_score, 2)} -> #{Float.round(weighted_seeders, 2)} (25%)
+        - Size:     #{Float.round(size_score, 2)} -> #{Float.round(weighted_size, 2)} (10%)
+        - Age:      #{Float.round(age_score, 2)} -> #{Float.round(weighted_age, 2)} (5%)
+        - Tag bonus: #{Float.round(tag_bonus, 2)}
+      TOTAL: #{Float.round(total, 2)}
+    """)
 
     ScoreBreakdown.new(%{
       quality: round_score(quality_score),
@@ -362,6 +439,16 @@ defmodule Mydia.Indexers.ReleaseRanker do
 
   defp quality_preference_index(%SearchResult{quality: nil}, _preferred_qualities) do
     999
+  end
+
+  defp quality_preference_index(_result, nil) do
+    # No preferred qualities set, return 0 so all results sort by score only
+    0
+  end
+
+  defp quality_preference_index(_result, []) do
+    # Empty preferred qualities list, return 0 so all results sort by score only
+    0
   end
 
   defp quality_preference_index(%SearchResult{quality: quality}, preferred_qualities) do
