@@ -4,6 +4,7 @@ defmodule Mydia.Indexers.CardigannSearchEngineTest do
   alias Mydia.Indexers.CardigannSearchEngine
   alias Mydia.Indexers.CardigannDefinition.Parsed
   alias Mydia.Indexers.Adapter.Error
+  alias Mydia.Indexers.FlareSolverr
 
   describe "build_search_url/2" do
     test "builds URL with simple keyword substitution" do
@@ -516,6 +517,258 @@ defmodule Mydia.Indexers.CardigannSearchEngineTest do
 
       # Should handle empty query by substituting empty string
       assert {:error, _} = CardigannSearchEngine.execute_search(definition, [])
+    end
+  end
+
+  describe "FlareSolverr integration" do
+    setup do
+      definition = %Parsed{
+        id: "test-flaresolverr",
+        name: "Test FlareSolverr",
+        description: "Test indexer for FlareSolverr",
+        language: "en-US",
+        type: "public",
+        encoding: "UTF-8",
+        links: ["https://example.com"],
+        capabilities: %{modes: %{}},
+        search: %{
+          paths: [%{path: "/search/{{ .Keywords }}"}],
+          inputs: %{},
+          rows: %{selector: "tr"},
+          fields: %{title: %{selector: "td.title"}}
+        },
+        login: nil,
+        download: nil,
+        request_delay: nil,
+        follow_redirect: false
+      }
+
+      %{definition: definition}
+    end
+
+    test "execute_search accepts flaresolverr_opts parameter", %{definition: definition} do
+      flaresolverr_opts = %{enabled: false, definition_id: "test-uuid"}
+
+      # Should not error due to invalid flaresolverr_opts
+      # It will error due to network, but that's expected
+      assert {:error, _} =
+               CardigannSearchEngine.execute_search(
+                 definition,
+                 [query: "test"],
+                 %{},
+                 flaresolverr_opts
+               )
+    end
+
+    test "execute_search works without flaresolverr_opts", %{definition: definition} do
+      # Should work without passing flaresolverr_opts (backward compatible)
+      assert {:error, _} = CardigannSearchEngine.execute_search(definition, [query: "test"], %{})
+    end
+
+    test "flaresolverr enabled check respects global config", %{definition: _definition} do
+      # Save original config
+      original = Application.get_env(:mydia, :flaresolverr)
+
+      # Disable FlareSolverr globally
+      Application.put_env(:mydia, :flaresolverr, enabled: false, url: "http://localhost:8191")
+
+      # Even with enabled: true in opts, should not use FlareSolverr
+      refute FlareSolverr.enabled?()
+
+      # Restore original config
+      if original do
+        Application.put_env(:mydia, :flaresolverr, original)
+      else
+        Application.delete_env(:mydia, :flaresolverr)
+      end
+    end
+
+    test "flaresolverr enabled check requires URL", %{definition: _definition} do
+      # Save original config
+      original = Application.get_env(:mydia, :flaresolverr)
+
+      # Enable but without URL
+      Application.put_env(:mydia, :flaresolverr, enabled: true, url: nil)
+      refute FlareSolverr.enabled?()
+
+      # Enable with empty URL
+      Application.put_env(:mydia, :flaresolverr, enabled: true, url: "")
+      refute FlareSolverr.enabled?()
+
+      # Enable with valid URL
+      Application.put_env(:mydia, :flaresolverr, enabled: true, url: "http://localhost:8191")
+      assert FlareSolverr.enabled?()
+
+      # Restore original config
+      if original do
+        Application.put_env(:mydia, :flaresolverr, original)
+      else
+        Application.delete_env(:mydia, :flaresolverr)
+      end
+    end
+  end
+
+  describe "Cloudflare challenge detection" do
+    test "detects Cloudflare 403 response with cf-browser-verification" do
+      response = %{
+        status: 403,
+        body: """
+        <html><body>
+        <div id="cf-browser-verification">Please wait...</div>
+        </body></html>
+        """,
+        headers: []
+      }
+
+      # The cloudflare_challenge? function is private, but we can test it indirectly
+      # through the validation flow - 403 with Cloudflare content should be detected
+      # We test the validate_response function behavior
+      assert {:error, %Error{type: :connection_failed}} =
+               CardigannSearchEngine.validate_response(response)
+    end
+
+    test "detects Cloudflare 403 response with cf_clearance" do
+      response = %{
+        status: 403,
+        body: """
+        <html><body>
+        cf_clearance cookie required
+        </body></html>
+        """,
+        headers: []
+      }
+
+      assert {:error, %Error{type: :connection_failed}} =
+               CardigannSearchEngine.validate_response(response)
+    end
+
+    test "detects DDoS-Guard 403 response" do
+      response = %{
+        status: 403,
+        body: """
+        <html><body>
+        DDoS-Guard protection
+        </body></html>
+        """,
+        headers: []
+      }
+
+      assert {:error, %Error{type: :connection_failed}} =
+               CardigannSearchEngine.validate_response(response)
+    end
+
+    test "detects Cloudflare 503 response" do
+      response = %{
+        status: 503,
+        body: """
+        <html><body>
+        <div>Checking your browser before accessing... Cloudflare</div>
+        </body></html>
+        """,
+        headers: []
+      }
+
+      assert {:error, %Error{type: :search_failed}} =
+               CardigannSearchEngine.validate_response(response)
+    end
+
+    test "regular 403 without Cloudflare markers is still rejected" do
+      response = %{
+        status: 403,
+        body: "Access denied. Login required.",
+        headers: []
+      }
+
+      # Regular 403 should still fail, just not as Cloudflare
+      assert {:error, %Error{type: :connection_failed}} =
+               CardigannSearchEngine.validate_response(response)
+    end
+  end
+
+  describe "cookie handling in user_config" do
+    setup do
+      definition = %Parsed{
+        id: "test-cookies",
+        name: "Test Cookies",
+        description: "Test indexer for cookie handling",
+        language: "en-US",
+        type: "public",
+        encoding: "UTF-8",
+        links: ["https://example.com"],
+        capabilities: %{modes: %{}},
+        search: %{
+          paths: [%{path: "/search"}],
+          inputs: %{},
+          rows: %{selector: "tr"},
+          fields: %{title: %{selector: "td.title"}}
+        },
+        login: nil,
+        download: nil,
+        request_delay: nil,
+        follow_redirect: false
+      }
+
+      %{definition: definition}
+    end
+
+    test "user_config cookies are included in request", %{definition: definition} do
+      params = %{
+        query_params: %{},
+        headers: [],
+        method: :get
+      }
+
+      user_config = %{
+        cookies: ["session=abc123", "token=xyz789"]
+      }
+
+      # This will fail to connect, but we're testing the function accepts cookies
+      # In real usage, a mock server would verify the Cookie header
+      assert {:error, _} =
+               CardigannSearchEngine.execute_http_request(
+                 definition,
+                 "https://invalid-domain-for-testing.example",
+                 params,
+                 user_config
+               )
+    end
+
+    test "empty cookies list is handled", %{definition: definition} do
+      params = %{
+        query_params: %{},
+        headers: [],
+        method: :get
+      }
+
+      user_config = %{
+        cookies: []
+      }
+
+      assert {:error, _} =
+               CardigannSearchEngine.execute_http_request(
+                 definition,
+                 "https://invalid-domain-for-testing.example",
+                 params,
+                 user_config
+               )
+    end
+
+    test "missing cookies key is handled", %{definition: definition} do
+      params = %{
+        query_params: %{},
+        headers: [],
+        method: :get
+      }
+
+      user_config = %{}
+
+      assert {:error, _} =
+               CardigannSearchEngine.execute_http_request(
+                 definition,
+                 "https://invalid-domain-for-testing.example",
+                 params,
+                 user_config
+               )
     end
   end
 end

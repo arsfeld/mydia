@@ -5,10 +5,12 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   alias Mydia.Settings
   alias Mydia.Settings.{QualityProfile, DownloadClientConfig, IndexerConfig, LibraryPath}
   alias Mydia.Downloads.ClientHealth
+  alias Mydia.Indexers
   alias Mydia.Indexers.Health, as: IndexerHealth
   alias Mydia.Indexers.CardigannFeatureFlags
   alias Mydia.System
   alias MydiaWeb.AdminConfigLive.Components
+  alias MydiaWeb.AdminConfigLive.FlareSolverrStatusComponent
 
   require Logger
   alias Mydia.Logger, as: MydiaLogger
@@ -45,6 +47,62 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   @impl true
   def handle_info(:refresh_system_data, socket) do
     {:noreply, load_system_data(socket)}
+  end
+
+  @impl true
+  def handle_info(:reload_library_indexers, socket) do
+    # Reload library indexers when a library indexer is toggled
+    cardigann_enabled = CardigannFeatureFlags.enabled?()
+
+    library_indexers =
+      if cardigann_enabled do
+        Indexers.list_cardigann_definitions(enabled: true)
+      else
+        []
+      end
+
+    library_indexer_stats =
+      if cardigann_enabled do
+        Indexers.count_cardigann_definitions()
+      else
+        %{total: 0, enabled: 0, disabled: 0}
+      end
+
+    {:noreply,
+     socket
+     |> assign(:library_indexers, library_indexers)
+     |> assign(:library_indexer_stats, library_indexer_stats)}
+  end
+
+  @impl true
+  def handle_info({:sync_complete, component_id, result}, socket) do
+    # Forward the sync result to the IndexerLibraryComponent
+    send_update(MydiaWeb.AdminConfigLive.IndexerLibraryComponent,
+      id: component_id,
+      sync_result: result
+    )
+
+    # Also reload the library indexers data for the main indexers tab
+    cardigann_enabled = CardigannFeatureFlags.enabled?()
+
+    library_indexers =
+      if cardigann_enabled do
+        Indexers.list_cardigann_definitions(enabled: true)
+      else
+        []
+      end
+
+    library_indexer_stats =
+      if cardigann_enabled do
+        Indexers.count_cardigann_definitions()
+      else
+        %{total: 0, enabled: 0, disabled: 0}
+      end
+
+    {:noreply,
+     socket
+     |> assign(:library_indexers, library_indexers)
+     |> assign(:library_indexer_stats, library_indexer_stats)}
   end
 
   @impl true
@@ -872,6 +930,16 @@ defmodule MydiaWeb.AdminConfigLive.Index do
   end
 
   @impl true
+  def handle_event("show_indexer_library", _params, socket) do
+    {:noreply, assign(socket, :show_indexer_library_modal, true)}
+  end
+
+  @impl true
+  def handle_event("close_indexer_library", _params, socket) do
+    {:noreply, assign(socket, :show_indexer_library_modal, false)}
+  end
+
+  @impl true
   def handle_event("test_indexer_connection", _params, socket) do
     # Extract form params from the current changeset
     changeset = socket.assigns.indexer_form.source
@@ -996,6 +1064,230 @@ defmodule MydiaWeb.AdminConfigLive.Index do
          socket
          |> put_flash(:error, "Health check failed: #{error_msg}")
          |> load_configuration_data()}
+    end
+  end
+
+  @impl true
+  def handle_event("test_library_indexer", %{"id" => id}, socket) do
+    case Indexers.test_cardigann_connection(id) do
+      {:ok, result} ->
+        flash_message =
+          if result.success do
+            "Connection successful (#{result.response_time_ms}ms)"
+          else
+            "Connection failed: #{result.error || "Unknown error"}"
+          end
+
+        flash_type = if result.success, do: :info, else: :error
+
+        {:noreply,
+         socket
+         |> put_flash(flash_type, flash_message)
+         |> load_configuration_data()}
+
+      {:error, reason} ->
+        MydiaLogger.log_error(:liveview, "Failed to test library indexer connection",
+          error: reason,
+          operation: :test_library_indexer,
+          definition_id: id,
+          user_id: socket.assigns.current_user.id
+        )
+
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to test connection: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_library_flaresolverr", %{"id" => id}, socket) do
+    definition = Indexers.get_cardigann_definition!(id)
+    new_enabled = !definition.flaresolverr_enabled
+
+    case Indexers.update_flaresolverr_settings(definition, %{flaresolverr_enabled: new_enabled}) do
+      {:ok, updated_definition} ->
+        action = if updated_definition.flaresolverr_enabled, do: "enabled", else: "disabled"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "FlareSolverr #{action} for #{definition.name}")
+         |> load_configuration_data()}
+
+      {:error, changeset} ->
+        MydiaLogger.log_error(:liveview, "Failed to toggle FlareSolverr",
+          error: changeset,
+          operation: :toggle_library_flaresolverr,
+          definition_id: id,
+          user_id: socket.assigns.current_user.id
+        )
+
+        error_msg = MydiaLogger.user_error_message(:toggle_library_flaresolverr, changeset)
+
+        {:noreply,
+         socket
+         |> put_flash(:error, error_msg)}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_library_indexer", %{"id" => id}, socket) do
+    definition = Indexers.get_cardigann_definition!(id)
+
+    result =
+      if definition.enabled do
+        Indexers.disable_cardigann_definition(definition)
+      else
+        Indexers.enable_cardigann_definition(definition)
+      end
+
+    case result do
+      {:ok, updated_definition} ->
+        socket =
+          if updated_definition.enabled do
+            # Re-enabling: show success flash, clear undo banner
+            socket
+            |> put_flash(:info, "#{definition.name} enabled")
+            |> assign(:recently_disabled_indexer, nil)
+          else
+            # Disabling: show undo banner instead of flash
+            socket
+            |> assign(:recently_disabled_indexer, updated_definition)
+          end
+
+        {:noreply, load_configuration_data(socket)}
+
+      {:error, changeset} ->
+        MydiaLogger.log_error(:liveview, "Failed to toggle library indexer",
+          error: changeset,
+          operation: :toggle_library_indexer,
+          definition_id: id,
+          user_id: socket.assigns.current_user.id
+        )
+
+        error_msg = MydiaLogger.user_error_message(:toggle_library_indexer, changeset)
+
+        {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @impl true
+  def handle_event("undo_disable_library_indexer", _params, socket) do
+    case socket.assigns.recently_disabled_indexer do
+      nil ->
+        {:noreply, socket}
+
+      definition ->
+        case Indexers.enable_cardigann_definition(definition) do
+          {:ok, _updated} ->
+            {:noreply,
+             socket
+             |> assign(:recently_disabled_indexer, nil)
+             |> put_flash(:info, "#{definition.name} re-enabled")
+             |> load_configuration_data()}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to re-enable indexer")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("dismiss_undo_banner", _params, socket) do
+    {:noreply, assign(socket, :recently_disabled_indexer, nil)}
+  end
+
+  @impl true
+  def handle_event("configure_library_indexer", %{"id" => id}, socket) do
+    definition = Indexers.get_cardigann_definition!(id)
+
+    {:noreply,
+     socket
+     |> assign(:show_library_config_modal, true)
+     |> assign(:configuring_library_indexer, definition)}
+  end
+
+  @impl true
+  def handle_event("close_library_config_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_library_config_modal, false)
+     |> assign(:configuring_library_indexer, nil)}
+  end
+
+  @impl true
+  def handle_event("save_library_indexer_config", %{"config" => config_params}, socket) do
+    definition = socket.assigns.configuring_library_indexer
+
+    case Indexers.configure_cardigann_definition(definition, config_params) do
+      {:ok, _updated_definition} ->
+        {:noreply,
+         socket
+         |> assign(:show_library_config_modal, false)
+         |> assign(:configuring_library_indexer, nil)
+         |> put_flash(:info, "Configuration saved for #{definition.name}")
+         |> load_configuration_data()}
+
+      {:error, changeset} ->
+        MydiaLogger.log_error(:liveview, "Failed to configure library indexer",
+          error: changeset,
+          operation: :configure_library_indexer,
+          definition_id: definition.id,
+          user_id: socket.assigns.current_user.id
+        )
+
+        error_msg = MydiaLogger.user_error_message(:configure_library_indexer, changeset)
+
+        {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  ## FlareSolverr Events
+
+  @impl true
+  def handle_event("test_flaresolverr", _params, socket) do
+    alias Mydia.Indexers.FlareSolverr
+
+    case FlareSolverr.health_check() do
+      {:ok, info} ->
+        version = info[:version] || "unknown"
+        sessions = length(info[:sessions] || [])
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "FlareSolverr connection successful! Version: #{version}, Active sessions: #{sessions}"
+         )
+         |> load_system_data()}
+
+      {:error, :disabled} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "FlareSolverr is disabled. Enable it in configuration.")}
+
+      {:error, :not_configured} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "FlareSolverr is not configured. Set FLARESOLVERR_URL in environment."
+         )}
+
+      {:error, {:connection_error, reason}} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "FlareSolverr connection failed: #{reason}")}
+
+      {:error, reason} ->
+        MydiaLogger.log_error(:liveview, "FlareSolverr health check failed",
+          error: reason,
+          operation: :test_flaresolverr,
+          user_id: socket.assigns.current_user.id
+        )
+
+        {:noreply,
+         socket
+         |> put_flash(:error, "FlareSolverr test failed: #{inspect(reason)}")}
     end
   end
 
@@ -1183,6 +1475,23 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     indexers = Settings.list_indexer_configs()
     indexer_health = get_indexer_health_status(indexers)
 
+    # Load enabled library indexers if Cardigann feature is enabled
+    cardigann_enabled = CardigannFeatureFlags.enabled?()
+
+    library_indexers =
+      if cardigann_enabled do
+        Indexers.list_cardigann_definitions(enabled: true)
+      else
+        []
+      end
+
+    library_indexer_stats =
+      if cardigann_enabled do
+        Indexers.count_cardigann_definitions()
+      else
+        %{total: 0, enabled: 0, disabled: 0}
+      end
+
     socket
     |> assign(:config, Settings.get_runtime_config())
     |> assign(:config_settings_with_sources, get_all_settings_with_sources())
@@ -1191,6 +1500,8 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     |> assign(:client_health, client_health)
     |> assign(:indexers, indexers)
     |> assign(:indexer_health, indexer_health)
+    |> assign(:library_indexers, library_indexers)
+    |> assign(:library_indexer_stats, library_indexer_stats)
     |> assign(:library_paths, Settings.list_library_paths())
     |> assign(:crash_report_stats, Mydia.CrashReporter.stats())
     |> assign(:queued_crash_reports, Mydia.CrashReporter.list_queued_reports())
@@ -1200,6 +1511,10 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     |> assign(:show_library_path_modal, false)
     |> assign(:show_manual_report_modal, false)
     |> assign(:show_import_modal, false)
+    |> assign(:show_indexer_library_modal, false)
+    |> assign(:show_library_config_modal, false)
+    |> assign(:configuring_library_indexer, nil)
+    |> assign_new(:recently_disabled_indexer, fn -> nil end)
   end
 
   defp get_client_health_status(clients) do
@@ -1351,6 +1666,37 @@ defmodule MydiaWeb.AdminConfigLive.Index do
           value: get_crash_reporting_enabled(),
           source: get_source("CRASH_REPORTING_ENABLED", "crash_reporting.enabled")
         }
+      ],
+      "FlareSolverr" => [
+        %{
+          key: "flaresolverr.enabled",
+          label: "Enabled",
+          type: :boolean,
+          value: config.flaresolverr.enabled,
+          source: get_source("FLARESOLVERR_ENABLED", "flaresolverr.enabled")
+        },
+        %{
+          key: "flaresolverr.url",
+          label: "FlareSolverr URL",
+          type: :string,
+          value: config.flaresolverr.url || "",
+          source: get_source("FLARESOLVERR_URL", "flaresolverr.url"),
+          placeholder: "http://flaresolverr:8191"
+        },
+        %{
+          key: "flaresolverr.timeout",
+          label: "Timeout (ms)",
+          type: :integer,
+          value: config.flaresolverr.timeout,
+          source: get_source("FLARESOLVERR_TIMEOUT", "flaresolverr.timeout")
+        },
+        %{
+          key: "flaresolverr.max_timeout",
+          label: "Max Timeout (ms)",
+          type: :integer,
+          value: config.flaresolverr.max_timeout,
+          source: get_source("FLARESOLVERR_MAX_TIMEOUT", "flaresolverr.max_timeout")
+        }
       ]
     }
   end
@@ -1448,6 +1794,7 @@ defmodule MydiaWeb.AdminConfigLive.Index do
       "Downloads" -> :downloads
       "Crash Reporting" -> :crash_reporting
       "Notifications" -> :notifications
+      "FlareSolverr" -> :flaresolverr
       _ -> :general
     end
   end
@@ -1663,6 +2010,7 @@ defmodule MydiaWeb.AdminConfigLive.Index do
     socket
     |> assign(:database_info, get_database_info())
     |> assign(:system_info, get_system_info())
+    |> assign(:flaresolverr_status, FlareSolverrStatusComponent.get_status())
   end
 
   defp get_database_info do

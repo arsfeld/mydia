@@ -3,13 +3,18 @@
 # ============================================
 FROM elixir:1.18-alpine AS builder
 
+# Database type: sqlite (default) or postgres
+ARG DATABASE_TYPE=sqlite
+
 # Install build dependencies
+# postgresql16-dev is needed for postgrex compilation
 RUN apk add --no-cache \
     build-base \
     git \
     nodejs \
     npm \
     sqlite-dev \
+    postgresql16-dev \
     curl \
     ffmpeg-dev \
     fdk-aac-dev \
@@ -17,6 +22,7 @@ RUN apk add --no-cache \
 
 # Set build environment
 ENV MIX_ENV=prod
+ENV DATABASE_TYPE=${DATABASE_TYPE}
 
 # Install Hex and Rebar
 RUN mix local.hex --force && \
@@ -55,6 +61,9 @@ RUN mix release
 # ============================================
 FROM erlang:27-alpine
 
+# Database type: sqlite (default) or postgres
+ARG DATABASE_TYPE=sqlite
+
 # Add OCI labels following LinuxServer.io standards
 LABEL org.opencontainers.image.title="Mydia" \
       org.opencontainers.image.description="Modern, self-hosted media management platform" \
@@ -62,11 +71,14 @@ LABEL org.opencontainers.image.title="Mydia" \
       org.opencontainers.image.source="https://github.com/getmydia/mydia" \
       org.opencontainers.image.vendor="Mydia" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.database="${DATABASE_TYPE}" \
       maintainer="Mydia"
 
 # Install runtime dependencies including LSIO-compatible tools
+# libpq is needed for PostgreSQL connections at runtime
 RUN apk add --no-cache \
     sqlite-libs \
+    libpq \
     curl \
     ca-certificates \
     ffmpeg \
@@ -94,9 +106,11 @@ COPY docker-entrypoint-prod.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Set environment variables
+# DATABASE_TYPE is set to the value used at build time for proper adapter selection
 ENV HOME=/app \
     MIX_ENV=prod \
     PHX_SERVER=true \
+    DATABASE_TYPE=${DATABASE_TYPE} \
     DATABASE_PATH=/config/mydia.db \
     PORT=4000 \
     PUID=1000 \

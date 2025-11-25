@@ -91,6 +91,7 @@ defmodule Mydia.MixProject do
       {:luerl, "~> 1.2"},
       {:sweet_xml, "~> 0.7"},
       {:floki, "~> 0.36"},
+      {:nimble_parsec, "~> 1.4"},
 
       # Streaming & Media Processing
       {:membrane_core, "~> 1.1"},

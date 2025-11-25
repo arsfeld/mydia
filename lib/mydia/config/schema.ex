@@ -70,6 +70,13 @@ defmodule Mydia.Config.Schema do
       field :max_timeout_ms, :integer, default: 30000
     end
 
+    embeds_one :flaresolverr, FlareSolverr, on_replace: :update, primary_key: false do
+      field :enabled, :boolean, default: false
+      field :url, :string
+      field :timeout, :integer, default: 60_000
+      field :max_timeout, :integer, default: 120_000
+    end
+
     embeds_many :download_clients, DownloadClient, on_replace: :delete, primary_key: false do
       field :name, :string
       field :type, Ecto.Enum, values: [:qbittorrent, :transmission, :http, :sabnzbd, :nzbget]
@@ -123,6 +130,7 @@ defmodule Mydia.Config.Schema do
     |> cast_embed(:logging, with: &logging_changeset/2)
     |> cast_embed(:oban, with: &oban_changeset/2)
     |> cast_embed(:hooks, with: &hooks_changeset/2)
+    |> cast_embed(:flaresolverr, with: &flaresolverr_changeset/2)
     |> cast_embed(:download_clients, with: &download_client_changeset/2)
     |> cast_embed(:indexers, with: &indexer_changeset/2)
     |> cast_embed(:library_paths, with: &library_path_changeset/2)
@@ -222,6 +230,25 @@ defmodule Mydia.Config.Schema do
     |> validate_required([:enabled, :directory])
     |> validate_number(:default_timeout_ms, greater_than: 0)
     |> validate_number(:max_timeout_ms, greater_than: 0)
+  end
+
+  defp flaresolverr_changeset(schema, attrs) do
+    schema
+    |> cast(attrs, [:enabled, :url, :timeout, :max_timeout])
+    |> validate_flaresolverr_url()
+    |> validate_number(:timeout, greater_than: 0)
+    |> validate_number(:max_timeout, greater_than: 0)
+  end
+
+  defp validate_flaresolverr_url(changeset) do
+    enabled = get_field(changeset, :enabled)
+    url = get_field(changeset, :url)
+
+    if enabled && (is_nil(url) || url == "") do
+      add_error(changeset, :url, "is required when FlareSolverr is enabled")
+    else
+      changeset
+    end
   end
 
   defp download_client_changeset(schema, attrs) do
@@ -353,6 +380,7 @@ defmodule Mydia.Config.Schema do
       logging: %__MODULE__.Logging{},
       oban: %__MODULE__.Oban{},
       hooks: %__MODULE__.Hooks{},
+      flaresolverr: %__MODULE__.FlareSolverr{},
       download_clients: [],
       indexers: [],
       library_paths: []

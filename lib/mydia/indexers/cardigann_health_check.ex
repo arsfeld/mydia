@@ -16,7 +16,6 @@ defmodule Mydia.Indexers.CardigannHealthCheck do
 
   alias Mydia.Indexers.CardigannDefinition
   alias Mydia.Indexers.CardigannParser
-  alias Mydia.Indexers.CardigannSearchEngine
   alias Mydia.Repo
 
   require Logger
@@ -142,19 +141,19 @@ defmodule Mydia.Indexers.CardigannHealthCheck do
   defp perform_test_search(definition, parsed_definition) do
     start_time = System.monotonic_time(:millisecond)
 
-    # Use a simple test query
-    search_opts = [query: "test", categories: []]
-    user_config = definition.config || %{}
+    # Test connectivity by hitting the homepage instead of doing a full search
+    # This avoids issues with complex Go template conditionals in search paths
+    base_url = get_base_url(parsed_definition)
 
     result =
-      case CardigannSearchEngine.execute_search(parsed_definition, search_opts, user_config) do
-        {:ok, response} ->
+      case test_homepage(base_url, definition.config || %{}) do
+        {:ok, status} ->
           response_time = System.monotonic_time(:millisecond) - start_time
 
           %{
             success: true,
             status: determine_health_status(definition, true, response_time),
-            message: "Connection successful (#{response.status})",
+            message: "Connection successful (HTTP #{status})",
             response_time_ms: response_time,
             error: nil
           }
@@ -173,6 +172,49 @@ defmodule Mydia.Indexers.CardigannHealthCheck do
 
     update_health_status(definition, result)
     {:ok, result}
+  end
+
+  defp get_base_url(%{links: [base_url | _]}), do: String.trim_trailing(base_url, "/")
+  defp get_base_url(_), do: nil
+
+  defp test_homepage(nil, _user_config), do: {:error, "No base URL configured"}
+
+  defp test_homepage(base_url, user_config) do
+    req_opts = [
+      receive_timeout: 30_000,
+      redirect: true,
+      retry: false
+    ]
+
+    # Add cookies if present in user config
+    req_opts =
+      case Map.get(user_config, "cookie") do
+        nil ->
+          req_opts
+
+        cookie when is_binary(cookie) and cookie != "" ->
+          Keyword.put(req_opts, :headers, [{"Cookie", cookie}])
+
+        _ ->
+          req_opts
+      end
+
+    case Req.get(base_url, req_opts) do
+      {:ok, %Req.Response{status: status}} when status in 200..399 ->
+        {:ok, status}
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, "HTTP #{status}"}
+
+      {:error, %Mint.TransportError{reason: :timeout}} ->
+        {:error, "Request timeout"}
+
+      {:error, %Mint.TransportError{reason: reason}} ->
+        {:error, "Connection failed: #{inspect(reason)}"}
+
+      {:error, reason} ->
+        {:error, "Request failed: #{inspect(reason)}"}
+    end
   end
 
   defp determine_health_status(definition, success, response_time) do
@@ -218,7 +260,6 @@ defmodule Mydia.Indexers.CardigannHealthCheck do
     |> Repo.update()
   end
 
-  defp format_error(%{message: message}), do: message
   defp format_error(error) when is_binary(error), do: error
   defp format_error(error), do: inspect(error)
 end

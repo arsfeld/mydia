@@ -5,6 +5,7 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
   This module handles:
   - Building search URLs from templates with variable substitution
   - Executing HTTP requests with proper headers, cookies, and rate limiting
+  - FlareSolverr integration for Cloudflare-protected sites
   - Validating responses before passing to the result parser
   - Error handling for timeouts, rate limits, and invalid responses
 
@@ -13,8 +14,19 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
   1. **Build Search URL:** Apply query template with parameters
   2. **Build Request Params:** Construct query parameters
   3. **Execute HTTP Request:** Send request with headers, cookies, etc.
+     - If FlareSolverr enabled: Route through FlareSolverr
+     - If Cloudflare detected: Auto-retry through FlareSolverr
   4. **Validate Response:** Check response is valid
   5. **Return Response:** Pass to result parser (handled by caller)
+
+  ## FlareSolverr Integration
+
+  When an indexer requires Cloudflare bypass:
+  1. Check if `flaresolverr_enabled` is true for the indexer
+  2. Check if global FlareSolverr is configured and available
+  3. Route requests through FlareSolverr if both conditions are met
+  4. Extract and cache cookies from FlareSolverr responses
+  5. Reuse cached cookies for subsequent requests until they expire
 
   ## URL Template Variables
 
@@ -41,7 +53,10 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
   """
 
   alias Mydia.Indexers.CardigannDefinition.Parsed
+  alias Mydia.Indexers.CardigannTemplate
   alias Mydia.Indexers.Adapter.Error
+  alias Mydia.Indexers.FlareSolverr
+  alias Mydia.Indexers.FlareSolverr.Response, as: FlareSolverrResponse
 
   require Logger
 
@@ -51,13 +66,20 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
           season: integer() | nil,
           episode: integer() | nil,
           imdb_id: String.t() | nil,
-          tmdb_id: integer() | nil
+          tmdb_id: integer() | nil,
+          config: map() | nil,
+          settings: [map()] | nil
         ]
 
   @type http_response :: %{
           status: integer(),
           body: String.t(),
           headers: [{String.t(), String.t()}]
+        }
+
+  @type flaresolverr_opts :: %{
+          optional(:enabled) => boolean(),
+          optional(:definition_id) => binary()
         }
 
   @doc """
@@ -68,10 +90,14 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
   - `definition` - Parsed Cardigann definition
   - `opts` - Search options (query, categories, season, episode, etc.)
   - `user_config` - Optional user configuration (cookies, credentials)
+  - `flaresolverr_opts` - Optional FlareSolverr configuration:
+    - `:enabled` - Whether to use FlareSolverr for this indexer
+    - `:definition_id` - Database ID for storing FlareSolverr cookies
 
   ## Returns
 
   - `{:ok, response}` - HTTP response ready for parsing
+  - `{:ok, response, flaresolverr_cookies}` - Response with FlareSolverr cookies to cache
   - `{:error, reason}` - Search execution error
 
   ## Examples
@@ -80,19 +106,245 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
       iex> {:ok, response} = execute_search(definition, opts)
       iex> response.status
       200
-  """
-  @spec execute_search(Parsed.t(), search_opts(), map()) ::
-          {:ok, http_response()} | {:error, Error.t()}
-  def execute_search(definition, opts, user_config \\ %{})
 
-  def execute_search(%Parsed{} = definition, opts, user_config) when is_list(opts) do
+      # With FlareSolverr enabled
+      iex> flaresolverr_opts = %{enabled: true, definition_id: "uuid"}
+      iex> {:ok, response, cookies} = execute_search(definition, opts, %{}, flaresolverr_opts)
+  """
+  @spec execute_search(Parsed.t(), search_opts(), map(), flaresolverr_opts()) ::
+          {:ok, http_response()}
+          | {:ok, http_response(), list()}
+          | {:error, Error.t()}
+  def execute_search(definition, opts, user_config \\ %{}, flaresolverr_opts \\ %{})
+
+  def execute_search(%Parsed{} = definition, opts, user_config, flaresolverr_opts)
+      when is_list(opts) do
     with {:ok, url} <- build_search_url(definition, opts),
-         {:ok, request_params} <- build_request_params(definition, opts),
-         {:ok, response} <- execute_http_request(definition, url, request_params, user_config),
-         :ok <- validate_response(response) do
-      {:ok, response}
+         {:ok, request_params} <- build_request_params(definition, opts) do
+      # Determine if FlareSolverr should be used
+      use_flaresolverr = should_use_flaresolverr?(flaresolverr_opts)
+
+      if use_flaresolverr do
+        execute_with_flaresolverr(definition, url, request_params, user_config)
+      else
+        execute_direct_request(definition, url, request_params, user_config, flaresolverr_opts)
+      end
     end
   end
+
+  # Execute request directly and detect Cloudflare challenges
+  defp execute_direct_request(definition, url, request_params, user_config, flaresolverr_opts) do
+    case execute_http_request(definition, url, request_params, user_config) do
+      {:ok, response} ->
+        if cloudflare_challenge?(response) do
+          handle_cloudflare_challenge(
+            definition,
+            url,
+            request_params,
+            user_config,
+            flaresolverr_opts
+          )
+        else
+          with :ok <- validate_response(response) do
+            {:ok, response}
+          end
+        end
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Handle Cloudflare challenge by routing through FlareSolverr
+  defp handle_cloudflare_challenge(
+         definition,
+         url,
+         request_params,
+         user_config,
+         _flaresolverr_opts
+       ) do
+    Logger.info("Cloudflare challenge detected for #{definition.id}, attempting FlareSolverr")
+
+    if FlareSolverr.enabled?() do
+      case execute_with_flaresolverr(definition, url, request_params, user_config) do
+        {:ok, response, cookies} ->
+          # Return with indicator that FlareSolverr was used and indexer should be flagged
+          {:ok, response, [{:flaresolverr_required, true} | cookies]}
+
+        {:ok, response} ->
+          {:ok, response, [{:flaresolverr_required, true}]}
+
+        {:error, _} ->
+          # FlareSolverr failed, return original Cloudflare error
+          Logger.warning(
+            "FlareSolverr failed for #{definition.id}, falling back to Cloudflare error"
+          )
+
+          {:error,
+           Error.connection_failed(
+             "Cloudflare protection detected but FlareSolverr failed. " <>
+               "Enable FlareSolverr for this indexer or try again later."
+           )}
+      end
+    else
+      Logger.warning("Cloudflare detected for #{definition.id} but FlareSolverr not available")
+
+      {:error,
+       Error.connection_failed(
+         "Cloudflare protection detected. " <>
+           "Configure FlareSolverr to access this indexer."
+       )}
+    end
+  end
+
+  # Execute request through FlareSolverr
+  defp execute_with_flaresolverr(definition, url, request_params, user_config) do
+    Logger.debug("Executing request through FlareSolverr: #{url}")
+
+    # Apply rate limiting if configured
+    apply_rate_limit(definition)
+
+    # Build FlareSolverr options from user_config
+    flaresolverr_request_opts = build_flaresolverr_opts(user_config)
+
+    result =
+      case request_params.method do
+        :get ->
+          # For GET requests, append query params to URL
+          url_with_params = append_query_params(url, request_params.query_params)
+          FlareSolverr.get(url_with_params, flaresolverr_request_opts)
+
+        :post ->
+          FlareSolverr.post(
+            url,
+            Keyword.put(flaresolverr_request_opts, :post_data, request_params.query_params)
+          )
+      end
+
+    case result do
+      {:ok, %FlareSolverrResponse{} = fs_response} ->
+        # Convert FlareSolverr response to http_response format
+        response = %{
+          status: FlareSolverrResponse.http_status(fs_response) || 200,
+          body: FlareSolverrResponse.body(fs_response) || "",
+          headers: convert_flaresolverr_headers(fs_response)
+        }
+
+        # Extract cookies for caching
+        cookies = FlareSolverrResponse.cookies(fs_response)
+
+        with :ok <- validate_response(response) do
+          if cookies != [] do
+            {:ok, response, cookies}
+          else
+            {:ok, response}
+          end
+        end
+
+      {:error, {:challenge_failed, message}} ->
+        Logger.error("FlareSolverr challenge failed for #{definition.id}: #{message}")
+        {:error, Error.connection_failed("Cloudflare challenge failed: #{message}")}
+
+      {:error, {:challenge_timeout, message}} ->
+        Logger.error("FlareSolverr timeout for #{definition.id}: #{message}")
+        {:error, Error.connection_failed("Cloudflare challenge timeout: #{message}")}
+
+      {:error, :timeout} ->
+        Logger.error("FlareSolverr request timeout for #{definition.id}")
+        {:error, Error.connection_failed("FlareSolverr request timeout")}
+
+      {:error, {:connection_error, reason}} ->
+        Logger.error("FlareSolverr connection error for #{definition.id}: #{inspect(reason)}")
+        {:error, Error.connection_failed("FlareSolverr unavailable: #{inspect(reason)}")}
+
+      {:error, reason} ->
+        Logger.error("FlareSolverr error for #{definition.id}: #{inspect(reason)}")
+        {:error, Error.search_failed("FlareSolverr error: #{inspect(reason)}")}
+    end
+  end
+
+  # Check if FlareSolverr should be used for this request
+  defp should_use_flaresolverr?(flaresolverr_opts) do
+    flaresolverr_opts[:enabled] == true && FlareSolverr.enabled?()
+  end
+
+  # Build FlareSolverr request options from user_config
+  defp build_flaresolverr_opts(user_config) do
+    opts = []
+
+    # Add cookies if present
+    case Map.get(user_config, :cookies) do
+      cookies when is_list(cookies) and cookies != [] ->
+        # Convert cookies to FlareSolverr format
+        fs_cookies =
+          Enum.map(cookies, fn
+            cookie when is_binary(cookie) ->
+              # Parse "name=value" format
+              case String.split(cookie, "=", parts: 2) do
+                [name, value] -> %{name: name, value: value}
+                _ -> nil
+              end
+
+            cookie when is_map(cookie) ->
+              cookie
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        if fs_cookies != [], do: Keyword.put(opts, :cookies, fs_cookies), else: opts
+
+      _ ->
+        opts
+    end
+  end
+
+  # Append query params to URL
+  defp append_query_params(url, params) when params == %{}, do: url
+
+  defp append_query_params(url, params) do
+    query_string =
+      params
+      |> Enum.map(fn {k, v} ->
+        "#{URI.encode_www_form(to_string(k))}=#{URI.encode_www_form(to_string(v))}"
+      end)
+      |> Enum.join("&")
+
+    if String.contains?(url, "?") do
+      "#{url}&#{query_string}"
+    else
+      "#{url}?#{query_string}"
+    end
+  end
+
+  # Convert FlareSolverr headers to list format
+  defp convert_flaresolverr_headers(%FlareSolverrResponse{solution: %{headers: headers}})
+       when is_map(headers) do
+    Enum.map(headers, fn {k, v} -> {k, v} end)
+  end
+
+  defp convert_flaresolverr_headers(_), do: []
+
+  # Detect Cloudflare challenge response
+  defp cloudflare_challenge?(%{status: 403, body: body}) when is_binary(body) do
+    cloudflare_indicators = [
+      "cf-browser-verification",
+      "cf_clearance",
+      "Cloudflare",
+      "cloudflare",
+      "challenge-platform",
+      "jschl-answer",
+      "cf-chl-bypass",
+      "ddos-guard",
+      "DDoS-Guard"
+    ]
+
+    Enum.any?(cloudflare_indicators, &String.contains?(body, &1))
+  end
+
+  defp cloudflare_challenge?(%{status: 503, body: body}) when is_binary(body) do
+    String.contains?(body, "Cloudflare") || String.contains?(body, "cloudflare")
+  end
+
+  defp cloudflare_challenge?(_), do: false
 
   @doc """
   Builds the search URL from the definition's path template and search options.
@@ -121,7 +373,7 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
   def build_search_url(%Parsed{} = definition, opts) do
     with {:ok, base_url} <- get_base_url(definition),
          {:ok, path_config} <- select_search_path(definition, opts),
-         {:ok, path} <- substitute_template_variables(path_config.path, opts) do
+         {:ok, path} <- render_template(path_config.path, definition, opts) do
       url = build_full_url(base_url, path)
       {:ok, url}
     end
@@ -305,53 +557,29 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
     end
   end
 
-  defp substitute_template_variables(template, opts) do
+  # Render a template string using the CardigannTemplate engine
+  defp render_template(template, definition, opts) do
+    context = build_template_context(definition, opts)
+    CardigannTemplate.render(template, context)
+  end
+
+  # Build template context from definition and search options
+  defp build_template_context(definition, opts) do
     query = Keyword.get(opts, :query, "")
-    season = Keyword.get(opts, :season)
-    episode = Keyword.get(opts, :episode)
-    categories = Keyword.get(opts, :categories, [])
 
-    # Use custom encoding that properly encodes all special characters
-    # URI.encode/1 doesn't encode & and =, URI.encode_www_form/1 uses + for spaces
-    # We need proper percent encoding for URL paths
-    encoded_query = percent_encode(query)
-
-    # Build template context
-    result =
-      template
-      |> String.replace("{{ .Keywords }}", encoded_query)
-      |> String.replace("{{ .Query.Series }}", encoded_query)
-      |> String.replace("{{ .Query.Season }}", to_string(season || ""))
-      |> String.replace("{{ .Query.Ep }}", to_string(episode || ""))
-      |> String.replace("{{ .Categories }}", Enum.join(categories, ","))
-
-    {:ok, result}
-  end
-
-  # Properly percent-encode a string for use in URL paths
-  # This encodes all characters except unreserved characters (A-Z, a-z, 0-9, -, _, ., ~)
-  defp percent_encode(string) do
-    string
-    |> String.to_charlist()
-    |> Enum.map(fn char ->
-      if is_unreserved?(char) do
-        <<char>>
-      else
-        "%" <> Base.encode16(<<char>>, case: :upper)
-      end
-    end)
-    |> Enum.join()
-  end
-
-  # Check if a character is unreserved per RFC 3986
-  defp is_unreserved?(char) do
-    (char >= ?A and char <= ?Z) or
-      (char >= ?a and char <= ?z) or
-      (char >= ?0 and char <= ?9) or
-      char == ?- or
-      char == ?_ or
-      char == ?. or
-      char == ?~
+    %{
+      keywords: query,
+      config: Keyword.get(opts, :config, %{}),
+      query: %{
+        series: query,
+        season: Keyword.get(opts, :season),
+        episode: Keyword.get(opts, :episode),
+        imdb_id: Keyword.get(opts, :imdb_id),
+        tmdb_id: Keyword.get(opts, :tmdb_id)
+      },
+      categories: Keyword.get(opts, :categories, []),
+      settings: definition.settings
+    }
   end
 
   defp build_full_url(base_url, path) do
@@ -360,23 +588,33 @@ defmodule Mydia.Indexers.CardigannSearchEngine do
     "#{base_url}/#{path_without_leading_slash}"
   end
 
-  defp build_query_params(%Parsed{search: search}, opts) do
+  defp build_query_params(%Parsed{} = definition, opts) do
     # Start with inputs from the definition
-    base_params = Map.get(search, :inputs, %{})
+    base_params = Map.get(definition.search, :inputs, %{})
 
-    # Add query-specific parameters
-    query = Keyword.get(opts, :query, "")
-    categories = Keyword.get(opts, :categories, [])
+    # Build template context
+    context = build_template_context(definition, opts)
 
     # Substitute template variables in input values
+    # For query params, don't URL-encode (Req will do it)
     Enum.reduce(base_params, %{}, fn {key, value}, acc ->
       substituted_value =
         case value do
           v when is_binary(v) ->
-            v
-            |> String.replace("$raw:{{ .Keywords }}", query)
-            |> String.replace("{{ .Keywords }}", query)
-            |> String.replace("{{ .Categories }}", Enum.join(categories, ","))
+            # Handle special $raw: prefix (same behavior, just explicit)
+            if String.starts_with?(v, "$raw:") do
+              template = String.replace_prefix(v, "$raw:", "")
+
+              case CardigannTemplate.render(template, context, url_encode: false) do
+                {:ok, rendered} -> rendered
+                {:error, _} -> v
+              end
+            else
+              case CardigannTemplate.render(v, context, url_encode: false) do
+                {:ok, rendered} -> rendered
+                {:error, _} -> v
+              end
+            end
 
           v ->
             v

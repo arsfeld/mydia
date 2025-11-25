@@ -10,8 +10,8 @@ on:
       - "**"
 
 jobs:
-  docker-build:
-    name: Verify Docker Build
+  docker-build-sqlite:
+    name: Build SQLite Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +43,7 @@ jobs:
           tags: |
             type=raw,value=master
 
-      - name: Build and push Docker image
+      - name: Build and push SQLite Docker image
         id: push
         uses: docker/build-push-action@v6
         with:
@@ -51,10 +51,11 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' }}
+          build-args: DATABASE_TYPE=sqlite
           tags: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.meta.outputs.tags || 'mydia:ci-test' }}
           labels: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.meta.outputs.labels || '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=sqlite
+          cache-to: type=gha,mode=max,scope=sqlite
 
       - name: Generate artifact attestation
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
@@ -62,4 +63,59 @@ jobs:
         with:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  docker-build-postgres:
+    name: Build PostgreSQL Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for master-pg tag
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        id: meta_pg
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=master-pg
+
+      - name: Build and push PostgreSQL Docker image
+        id: push_pg
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' }}
+          build-args: DATABASE_TYPE=postgres
+          tags: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.meta_pg.outputs.tags || 'mydia:ci-test-pg' }}
+          labels: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.meta_pg.outputs.labels || '' }}
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,mode=max,scope=postgres
+
+      - name: Generate artifact attestation for PostgreSQL image
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push_pg.outputs.digest }}
           push-to-registry: true

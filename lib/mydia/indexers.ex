@@ -134,17 +134,23 @@ defmodule Mydia.Indexers do
     max_results = Keyword.get(opts, :max_results, 100)
     should_deduplicate = Keyword.get(opts, :deduplicate, true)
 
+    # Get traditional indexers (Prowlarr, Jackett)
     indexers = Settings.list_indexer_configs()
     enabled_indexers = Enum.filter(indexers, & &1.enabled)
 
-    if enabled_indexers == [] do
+    # Get enabled Cardigann definitions if feature is enabled
+    cardigann_configs = get_enabled_cardigann_configs()
+
+    all_indexers = enabled_indexers ++ cardigann_configs
+
+    if all_indexers == [] do
       Logger.info("No enabled indexers found for query: #{query}")
       {:ok, []}
     else
       start_time = System.monotonic_time(:millisecond)
 
       results =
-        enabled_indexers
+        all_indexers
         |> Task.async_stream(
           fn config -> search_with_metrics(config, query, opts) end,
           timeout: :infinity,
@@ -169,8 +175,8 @@ defmodule Mydia.Indexers do
       total_time = System.monotonic_time(:millisecond) - start_time
 
       Logger.info(
-        "Search completed: query=#{query}, indexers=#{length(enabled_indexers)}, " <>
-          "results=#{length(results)}, time=#{total_time}ms"
+        "Search completed: query=#{query}, indexers=#{length(all_indexers)}, " <>
+          "cardigann=#{length(cardigann_configs)}, results=#{length(results)}, time=#{total_time}ms"
       )
 
       {:ok, results}
@@ -218,6 +224,29 @@ defmodule Mydia.Indexers do
   end
 
   ## Private Functions
+
+  # Fetches enabled Cardigann definitions and converts them to adapter config format
+  defp get_enabled_cardigann_configs do
+    alias Mydia.Indexers.CardigannFeatureFlags
+
+    if CardigannFeatureFlags.enabled?() do
+      list_cardigann_definitions(enabled: true)
+      |> Enum.map(&cardigann_definition_to_config/1)
+    else
+      []
+    end
+  end
+
+  # Converts a CardigannDefinition to the config map expected by the Cardigann adapter
+  defp cardigann_definition_to_config(%CardigannDefinition{} = definition) do
+    %{
+      type: :cardigann,
+      name: definition.name,
+      indexer_id: definition.indexer_id,
+      enabled: definition.enabled,
+      user_settings: definition.config || %{}
+    }
+  end
 
   defp search_with_metrics(config, query, opts) do
     start_time = System.monotonic_time(:millisecond)
@@ -486,6 +515,69 @@ defmodule Mydia.Indexers do
       enabled: enabled,
       disabled: total - enabled
     }
+  end
+
+  ## FlareSolverr Functions
+
+  @doc """
+  Updates the FlareSolverr settings for a Cardigann definition.
+
+  ## Examples
+
+      iex> update_flaresolverr_settings(definition, %{flaresolverr_enabled: true})
+      {:ok, %CardigannDefinition{flaresolverr_enabled: true}}
+  """
+  def update_flaresolverr_settings(%CardigannDefinition{} = definition, attrs) do
+    definition
+    |> CardigannDefinition.flaresolverr_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Sets whether a Cardigann definition requires FlareSolverr.
+
+  This is typically set automatically when Cloudflare challenges are detected.
+
+  ## Examples
+
+      iex> set_flaresolverr_required(definition, true)
+      {:ok, %CardigannDefinition{flaresolverr_required: true}}
+  """
+  def set_flaresolverr_required(%CardigannDefinition{} = definition, required?)
+      when is_boolean(required?) do
+    update_flaresolverr_settings(definition, %{flaresolverr_required: required?})
+  end
+
+  @doc """
+  Lists all Cardigann definitions that have FlareSolverr enabled.
+
+  ## Examples
+
+      iex> list_flaresolverr_enabled_definitions()
+      [%CardigannDefinition{flaresolverr_enabled: true}, ...]
+  """
+  def list_flaresolverr_enabled_definitions do
+    from(d in CardigannDefinition,
+      where: d.flaresolverr_enabled == true,
+      order_by: [asc: d.name]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists all Cardigann definitions that require FlareSolverr.
+
+  ## Examples
+
+      iex> list_flaresolverr_required_definitions()
+      [%CardigannDefinition{flaresolverr_required: true}, ...]
+  """
+  def list_flaresolverr_required_definitions do
+    from(d in CardigannDefinition,
+      where: d.flaresolverr_required == true,
+      order_by: [asc: d.name]
+    )
+    |> Repo.all()
   end
 
   ## Private Cardigann Helpers

@@ -208,6 +208,37 @@ if config_env() == :prod do
     cardigann_enabled: cardigann_enabled
 end
 
+# FlareSolverr configuration (all environments)
+# FlareSolverr is a proxy server to bypass Cloudflare and DDoS-GUARD protection
+# Used by Cardigann indexers that require browser-based challenge solving
+flaresolverr_url = System.get_env("FLARESOLVERR_URL")
+
+flaresolverr_enabled =
+  case System.get_env("FLARESOLVERR_ENABLED") do
+    "true" -> true
+    "false" -> false
+    # Auto-enable if URL is configured
+    _ -> not is_nil(flaresolverr_url) and flaresolverr_url != ""
+  end
+
+flaresolverr_timeout =
+  case System.get_env("FLARESOLVERR_TIMEOUT") do
+    nil -> 60_000
+    value -> String.to_integer(value)
+  end
+
+flaresolverr_max_timeout =
+  case System.get_env("FLARESOLVERR_MAX_TIMEOUT") do
+    nil -> 120_000
+    value -> String.to_integer(value)
+  end
+
+config :mydia, :flaresolverr,
+  enabled: flaresolverr_enabled,
+  url: flaresolverr_url,
+  timeout: flaresolverr_timeout,
+  max_timeout: flaresolverr_max_timeout
+
 # Feature flags configuration for dev/test (reads from environment variable)
 if config_env() in [:dev, :test] do
   playback_enabled =

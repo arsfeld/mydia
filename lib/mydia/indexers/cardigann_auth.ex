@@ -161,8 +161,8 @@ defmodule Mydia.Indexers.CardigannAuth do
         if CardigannSearchSession.expired?(session) do
           {:error, :expired}
         else
-          # Cookies are stored as a list in the map
-          cookies = Map.get(session.cookies, "cookies", [])
+          # session.cookies is now directly a list (not wrapped in a map)
+          cookies = session.cookies || []
 
           {:ok,
            %{

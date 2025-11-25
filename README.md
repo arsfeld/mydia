@@ -105,6 +105,12 @@ Multi-platform images are available for the following architectures:
 
 The multi-arch image `ghcr.io/getmydia/mydia:latest` will automatically pull the correct image for your architecture.
 
+**Database Variants:**
+- `ghcr.io/getmydia/mydia:latest` - SQLite (default)
+- `ghcr.io/getmydia/mydia:latest-pg` - PostgreSQL
+
+Both variants are available for all supported architectures. See [PostgreSQL Support](#postgresql-support) for details.
+
 ## 🚀 Application Setup
 
 1. **Generate required secrets:**
@@ -337,6 +343,70 @@ environment:
 ```
 
 For more details about backup and restore procedures, see [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md).
+
+### PostgreSQL Support
+
+Mydia provides separate Docker images for PostgreSQL users who prefer a more traditional database backend:
+
+| Image Tag | Database | Use Case |
+|-----------|----------|----------|
+| `latest` | SQLite | Default, simpler setup, single-file database |
+| `latest-pg` | PostgreSQL | Scalability, existing PostgreSQL infrastructure |
+
+**Quick Start with PostgreSQL:**
+
+```yaml
+# docker-compose.postgres.yml (simplified example)
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mydia
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: mydia
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mydia:
+    image: ghcr.io/getmydia/mydia:latest-pg  # PostgreSQL variant
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: mydia
+      DATABASE_USER: mydia
+      DATABASE_PASSWORD: changeme
+      # ... other required variables
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres_data:
+```
+
+**PostgreSQL Environment Variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_TYPE` | Set to `postgres` for PostgreSQL | `sqlite` |
+| `DATABASE_HOST` | PostgreSQL server hostname | `localhost` |
+| `DATABASE_PORT` | PostgreSQL server port | `5432` |
+| `DATABASE_NAME` | Database name | `mydia` |
+| `DATABASE_USER` | Database username | `postgres` |
+| `DATABASE_PASSWORD` | Database password | - |
+| `POOL_SIZE` | Connection pool size | `10` |
+
+A complete example configuration is available in `docker-compose.postgres.yml`.
+
+**Important Notes:**
+
+- The database adapter is compiled into the image, so `latest` and `latest-pg` are **not interchangeable at runtime**
+- Use the correct image variant for your database choice
+- Both variants receive the same feature updates and version numbers
+- PostgreSQL images use `-pg` suffix (e.g., `1.0.0-pg`, `latest-pg`, `beta-pg`)
 
 ### Beta Releases
 
@@ -701,7 +771,7 @@ See `assets/SCREENSHOTS.md` for configuration options.
 ## 🛠️ Tech Stack
 
 - Phoenix 1.8 + LiveView
-- Ecto + SQLite
+- Ecto + SQLite/PostgreSQL
 - Oban (background jobs)
 - Tailwind CSS + DaisyUI
 - Req (HTTP client)

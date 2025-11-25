@@ -177,6 +177,33 @@ downloads:
   # How often to monitor downloads for completion (in minutes)
   monitor_interval_minutes: 2
 
+# FlareSolverr Configuration
+# ---------------------------
+# FlareSolverr is a proxy server to bypass Cloudflare and DDoS-GUARD protection.
+# Many Cardigann indexers require FlareSolverr to access sites protected by
+# Cloudflare's anti-bot measures. FlareSolverr runs as a separate Docker container.
+#
+# How it works:
+# 1. When an indexer needs to bypass Cloudflare, we send the URL to FlareSolverr
+# 2. FlareSolverr uses a headless browser to solve the challenge
+# 3. Returns cookies and page content that can be reused for subsequent requests
+#
+# Docker setup: docker run -d --name flaresolverr -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest
+flaresolverr:
+  # Enable FlareSolverr integration (auto-enabled if URL is set)
+  enabled: false
+
+  # FlareSolverr service URL (e.g., http://localhost:8191 or http://flaresolverr:8191 for Docker)
+  # In production, use environment variable: FLARESOLVERR_URL
+  url: "http://flaresolverr:8191"
+
+  # Request timeout in milliseconds (default: 60000 = 60 seconds)
+  # FlareSolverr can take 10-30 seconds to solve challenges
+  timeout: 60000
+
+  # Maximum timeout for very challenging sites (default: 120000 = 2 minutes)
+  max_timeout: 120000
+
 # Logging Configuration
 # ---------------------
 logging:

@@ -125,6 +125,7 @@ defmodule Mydia.Config.Loader do
       downloads: load_downloads_env(),
       logging: load_logging_env(),
       oban: load_oban_env(),
+      flaresolverr: load_flaresolverr_env(),
       download_clients: load_download_clients_env(),
       indexers: load_indexers_env(),
       library_paths: load_library_paths_env()
@@ -203,6 +204,14 @@ defmodule Mydia.Config.Loader do
     %{}
     |> put_if_present(:poll_interval, System.get_env("OBAN_POLL_INTERVAL"), &parse_integer/1)
     |> put_if_present(:max_age_days, System.get_env("OBAN_MAX_AGE_DAYS"), &parse_integer/1)
+  end
+
+  defp load_flaresolverr_env do
+    %{}
+    |> put_if_present(:enabled, System.get_env("FLARESOLVERR_ENABLED"), &parse_boolean/1)
+    |> put_if_present(:url, System.get_env("FLARESOLVERR_URL"))
+    |> put_if_present(:timeout, System.get_env("FLARESOLVERR_TIMEOUT"), &parse_integer/1)
+    |> put_if_present(:max_timeout, System.get_env("FLARESOLVERR_MAX_TIMEOUT"), &parse_integer/1)
   end
 
   defp load_download_clients_env do

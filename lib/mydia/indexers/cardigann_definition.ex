@@ -35,6 +35,10 @@ defmodule Mydia.Indexers.CardigannDefinition do
     field :last_successful_query_at, :utc_datetime
     field :consecutive_failures, :integer, default: 0
 
+    # FlareSolverr fields
+    field :flaresolverr_required, :boolean, default: false
+    field :flaresolverr_enabled, :boolean, default: false
+
     has_many :search_sessions, Mydia.Indexers.CardigannSearchSession,
       foreign_key: :cardigann_definition_id
 
@@ -59,7 +63,9 @@ defmodule Mydia.Indexers.CardigannDefinition do
       :schema_version,
       :enabled,
       :config,
-      :last_synced_at
+      :last_synced_at,
+      :flaresolverr_required,
+      :flaresolverr_enabled
     ])
     |> validate_required([
       :indexer_id,
@@ -105,4 +111,27 @@ defmodule Mydia.Indexers.CardigannDefinition do
     ])
     |> validate_inclusion(:health_status, @health_statuses)
   end
+
+  @doc """
+  Changeset for updating FlareSolverr settings.
+  """
+  def flaresolverr_changeset(definition, attrs) do
+    definition
+    |> cast(attrs, [:flaresolverr_required, :flaresolverr_enabled])
+  end
+
+  @doc """
+  Returns true if this indexer should use FlareSolverr.
+
+  FlareSolverr is used when:
+  1. The indexer is marked as requiring FlareSolverr, AND
+  2. The user has enabled FlareSolverr for this indexer (or it hasn't been explicitly disabled)
+  """
+  def use_flaresolverr?(%__MODULE__{flaresolverr_required: true, flaresolverr_enabled: true}),
+    do: true
+
+  def use_flaresolverr?(%__MODULE__{flaresolverr_required: true, flaresolverr_enabled: nil}),
+    do: true
+
+  def use_flaresolverr?(_), do: false
 end

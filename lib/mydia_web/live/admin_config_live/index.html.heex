@@ -56,16 +56,6 @@
       >
         <.icon name="hero-folder" class="w-4 h-4" /> Library
       </button>
-      <%= if @cardigann_enabled do %>
-        <button
-          role="tab"
-          class={["tab gap-2", @active_tab == "cardigann" && "tab-active"]}
-          phx-click="change_tab"
-          phx-value-tab="cardigann"
-        >
-          <.icon name="hero-book-open" class="w-4 h-4" /> Cardigann
-        </button>
-      <% end %>
       <div class="tab-content block bg-base-100 border-base-300">
         <%!-- System Status Tab --%>
         <%= if @active_tab == "status" do %>
@@ -76,6 +66,15 @@
             download_clients={@download_clients}
             indexers={@indexers}
           />
+          <%!-- FlareSolverr Status (External Services) --%>
+          <div class="px-4 sm:px-6 pb-6">
+            <div class="divider">External Services</div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+              <MydiaWeb.AdminConfigLive.FlareSolverrStatusComponent.flaresolverr_status_card flaresolverr_status={
+                @flaresolverr_status
+              } />
+            </div>
+          </div>
         <% end %>
         <%!-- General Settings Tab --%>
         <%= if @active_tab == "general" do %>
@@ -97,19 +96,21 @@
         <% end %>
         <%!-- Indexers Tab --%>
         <%= if @active_tab == "indexers" do %>
-          <Components.indexers_tab indexers={@indexers} indexer_health={@indexer_health} />
+          <Components.indexers_tab
+            indexers={@indexers}
+            indexer_health={@indexer_health}
+            library_indexers={@library_indexers}
+            library_indexer_stats={@library_indexer_stats}
+            cardigann_enabled={@cardigann_enabled}
+            recently_disabled_indexer={@recently_disabled_indexer}
+            flaresolverr_available={
+              @flaresolverr_status.configured and @flaresolverr_status.status != :disabled
+            }
+          />
         <% end %>
         <%!-- Library Paths Tab --%>
         <%= if @active_tab == "library" do %>
           <Components.library_paths_tab library_paths={@library_paths} />
-        <% end %>
-        <%!-- Cardigann Library Tab --%>
-        <%= if @active_tab == "cardigann" and @cardigann_enabled do %>
-          <.live_component
-            module={MydiaWeb.AdminConfigLive.CardigannLibraryComponent}
-            id="cardigann-library"
-            current_user={@current_user}
-          />
         <% end %>
       </div>
     </div>
@@ -147,6 +148,18 @@
         indexer_mode={@indexer_mode}
         testing_indexer_connection={assigns[:testing_indexer_connection] || false}
       />
+    <% end %>
+    <%!-- Indexer Library Modal --%>
+    <%= if assigns[:show_indexer_library_modal] and @cardigann_enabled do %>
+      <.live_component
+        module={MydiaWeb.AdminConfigLive.IndexerLibraryComponent}
+        id="indexer-library"
+        current_user={@current_user}
+      />
+    <% end %>
+    <%!-- Library Indexer Config Modal --%>
+    <%= if assigns[:show_library_config_modal] and assigns[:configuring_library_indexer] do %>
+      <Components.library_config_modal configuring_library_indexer={@configuring_library_indexer} />
     <% end %>
     <%!-- Library Path Modal --%>
     <%= if assigns[:show_library_path_modal] do %>

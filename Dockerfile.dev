@@ -1,6 +1,7 @@
 FROM elixir:1.18
 
 # Install build dependencies and Node.js
+# Includes both SQLite and PostgreSQL development libraries
 RUN apt-get update -qq && \
     apt-get install -y \
       build-essential \
@@ -9,6 +10,8 @@ RUN apt-get update -qq && \
       curl \
       sqlite3 \
       libsqlite3-dev \
+      libpq-dev \
+      postgresql-client \
       watchman \
       ffmpeg && \
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \

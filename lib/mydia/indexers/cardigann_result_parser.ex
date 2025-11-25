@@ -48,6 +48,7 @@ defmodule Mydia.Indexers.CardigannResultParser do
   alias Mydia.Indexers.SearchResult
   alias Mydia.Indexers.QualityParser
   alias Mydia.Indexers.Adapter.Error
+  alias Mydia.Indexers.CardigannTemplate
 
   require Logger
 
@@ -65,6 +66,8 @@ defmodule Mydia.Indexers.CardigannResultParser do
   - `definition` - Parsed Cardigann definition with search configuration
   - `response` - HTTP response with status and body
   - `indexer_name` - Name of the indexer for result attribution
+  - `opts` - Optional keyword list with:
+    - `:template_context` - Template context for rendering filter arguments
 
   ## Returns
 
@@ -75,15 +78,38 @@ defmodule Mydia.Indexers.CardigannResultParser do
 
       iex> parse_results(definition, response, "1337x")
       {:ok, [%SearchResult{}, ...]}
-  """
-  @spec parse_results(Parsed.t(), http_response(), String.t()) :: parse_result()
-  def parse_results(%Parsed{} = definition, response, indexer_name) do
-    case detect_response_type(response.body) do
-      :html ->
-        parse_html_results(definition, response.body, indexer_name)
 
-      :json ->
-        parse_json_results(definition, response.body, indexer_name)
+      iex> parse_results(definition, response, "1337x", template_context: %{config: %{"sort" => "seeders"}})
+      {:ok, [%SearchResult{}, ...]}
+  """
+  @spec parse_results(Parsed.t(), http_response(), String.t(), keyword()) :: parse_result()
+  def parse_results(%Parsed{} = definition, response, indexer_name, opts \\ []) do
+    body = response.body
+    template_context = Keyword.get(opts, :template_context, %{})
+
+    # Guard against nil or non-string bodies
+    cond do
+      is_nil(body) ->
+        {:error, Error.search_failed("Empty response body")}
+
+      is_map(body) ->
+        # Req auto-decoded JSON response - parse directly
+        parse_json_results_from_map(definition, body, indexer_name, template_context)
+
+      not is_binary(body) ->
+        {:error, Error.search_failed("Invalid response body type: #{inspect(body)}")}
+
+      String.trim(body) == "" ->
+        {:ok, []}
+
+      true ->
+        case detect_response_type(body) do
+          :html ->
+            parse_html_results(definition, body, indexer_name, template_context)
+
+          :json ->
+            parse_json_results(definition, body, indexer_name, template_context)
+        end
     end
   end
 
@@ -95,7 +121,7 @@ defmodule Mydia.Indexers.CardigannResultParser do
   1. Parse HTML with Floki
   2. Extract rows using row selector
   3. For each row, extract fields using field selectors
-  4. Apply filters to field values
+  4. Apply filters to field values (with template rendering)
   5. Transform to SearchResult structs
 
   ## Parameters
@@ -103,23 +129,33 @@ defmodule Mydia.Indexers.CardigannResultParser do
   - `definition` - Parsed Cardigann definition
   - `html_body` - HTML response body
   - `indexer_name` - Name of the indexer
+  - `template_context` - Template context for rendering filter arguments
 
   ## Returns
 
   - `{:ok, results}` - List of SearchResult structs
   - `{:error, reason}` - Parsing error
   """
-  @spec parse_html_results(Parsed.t(), String.t(), String.t()) :: parse_result()
-  def parse_html_results(%Parsed{} = definition, html_body, indexer_name) do
+  @spec parse_html_results(Parsed.t(), String.t(), String.t(), map()) :: parse_result()
+  def parse_html_results(%Parsed{} = definition, html_body, indexer_name, template_context \\ %{}) do
     with {:ok, document} <- parse_html_document(html_body),
-         {:ok, rows} <- extract_rows(document, definition.search),
-         {:ok, parsed_rows} <- parse_row_fields(rows, definition.search, document) do
-      results = transform_to_search_results(parsed_rows, indexer_name)
-      {:ok, results}
+         {:ok, rows} <- extract_rows(document, definition.search) do
+      Logger.info("[#{indexer_name}] Extracted #{length(rows)} rows from HTML")
+
+      case parse_row_fields(rows, definition.search, document, template_context) do
+        {:ok, parsed_rows} ->
+          Logger.info("[#{indexer_name}] Parsed #{length(parsed_rows)} rows successfully")
+          results = transform_to_search_results(parsed_rows, indexer_name)
+          Logger.info("[#{indexer_name}] Transformed to #{length(results)} search results")
+          {:ok, results}
+
+        error ->
+          error
+      end
     end
   rescue
     error ->
-      Logger.error("HTML parsing error: #{inspect(error)}")
+      Logger.error("HTML parsing error for #{indexer_name}: #{inspect(error)}")
       {:error, Error.search_failed("Failed to parse HTML response: #{inspect(error)}")}
   end
 
@@ -131,19 +167,29 @@ defmodule Mydia.Indexers.CardigannResultParser do
   - `definition` - Parsed Cardigann definition
   - `json_body` - JSON response body
   - `indexer_name` - Name of the indexer
+  - `template_context` - Template context for rendering filter arguments
 
   ## Returns
 
   - `{:ok, results}` - List of SearchResult structs
   - `{:error, reason}` - Parsing error
   """
-  @spec parse_json_results(Parsed.t(), String.t(), String.t()) :: parse_result()
-  def parse_json_results(%Parsed{} = definition, json_body, indexer_name) do
+  @spec parse_json_results(Parsed.t(), String.t(), String.t(), map()) :: parse_result()
+  def parse_json_results(%Parsed{} = definition, json_body, indexer_name, template_context \\ %{}) do
     with {:ok, json} <- Jason.decode(json_body),
-         {:ok, rows} <- extract_json_rows(json, definition.search),
-         {:ok, parsed_rows} <- parse_json_row_fields(rows, definition.search) do
-      results = transform_to_search_results(parsed_rows, indexer_name)
-      {:ok, results}
+         {:ok, rows} <- extract_json_rows(json, definition.search) do
+      Logger.info("[#{indexer_name}] Extracted #{length(rows)} rows from JSON")
+
+      case parse_json_row_fields(rows, definition.search, template_context) do
+        {:ok, parsed_rows} ->
+          Logger.info("[#{indexer_name}] Parsed #{length(parsed_rows)} JSON rows successfully")
+          results = transform_to_search_results(parsed_rows, indexer_name)
+          Logger.info("[#{indexer_name}] Transformed to #{length(results)} search results")
+          {:ok, results}
+
+        error ->
+          error
+      end
     else
       {:error, %Jason.DecodeError{} = error} ->
         {:error, Error.search_failed("Invalid JSON: #{inspect(error)}")}
@@ -153,7 +199,41 @@ defmodule Mydia.Indexers.CardigannResultParser do
     end
   rescue
     error ->
-      Logger.error("JSON parsing error: #{inspect(error)}")
+      Logger.error("JSON parsing error for #{indexer_name}: #{inspect(error)}")
+      {:error, Error.search_failed("Failed to parse JSON response: #{inspect(error)}")}
+  end
+
+  @doc """
+  Parses pre-decoded JSON response (when Req auto-decodes JSON).
+
+  ## Parameters
+
+  - `definition` - Parsed Cardigann definition
+  - `json` - Already decoded JSON map
+  - `indexer_name` - Name of the indexer
+  - `template_context` - Template context for rendering filter arguments
+
+  ## Returns
+
+  - `{:ok, results}` - List of SearchResult structs
+  - `{:error, reason}` - Parsing error
+  """
+  @spec parse_json_results_from_map(Parsed.t(), map(), String.t(), map()) :: parse_result()
+  def parse_json_results_from_map(
+        %Parsed{} = definition,
+        json,
+        indexer_name,
+        template_context \\ %{}
+      )
+      when is_map(json) do
+    with {:ok, rows} <- extract_json_rows(json, definition.search),
+         {:ok, parsed_rows} <- parse_json_row_fields(rows, definition.search, template_context) do
+      results = transform_to_search_results(parsed_rows, indexer_name)
+      {:ok, results}
+    end
+  rescue
+    error ->
+      Logger.error("JSON map parsing error: #{inspect(error)}")
       {:error, Error.search_failed("Failed to parse JSON response: #{inspect(error)}")}
   end
 
@@ -167,13 +247,19 @@ defmodule Mydia.Indexers.CardigannResultParser do
   end
 
   defp extract_rows(document, %{rows: %{selector: selector} = row_config}) do
+    Logger.info("Extracting rows with selector: #{inspect(selector)}")
     rows = Floki.find(document, selector)
+    Logger.info("Found #{length(rows)} rows before filtering")
 
     # Apply 'after' filter to skip header rows if configured
     rows_after_skip =
       case Map.get(row_config, :after) do
-        nil -> rows
-        skip_count when is_integer(skip_count) -> Enum.drop(rows, skip_count)
+        nil ->
+          rows
+
+        skip_count when is_integer(skip_count) ->
+          Logger.info("Skipping first #{skip_count} rows")
+          Enum.drop(rows, skip_count)
       end
 
     {:ok, rows_after_skip}
@@ -183,52 +269,55 @@ defmodule Mydia.Indexers.CardigannResultParser do
     {:error, Error.search_failed("No row selector configured")}
   end
 
-  defp parse_row_fields(rows, %{fields: fields}, _document) do
+  defp parse_row_fields(rows, %{fields: fields}, _document, template_context) do
     parsed_rows =
       rows
       |> Enum.map(fn row ->
-        parse_single_row(row, fields)
+        parse_single_row(row, fields, template_context)
       end)
       |> Enum.filter(&(&1 != nil))
 
     {:ok, parsed_rows}
   end
 
-  defp parse_single_row(row, fields) do
+  defp parse_single_row(row, fields, template_context) do
     field_values =
       Enum.reduce(fields, %{}, fn {field_name, field_config}, acc ->
-        case extract_field_value(row, field_config) do
+        case extract_field_value(row, field_config, template_context) do
           {:ok, value} ->
             Map.put(acc, field_name, value)
 
-          {:error, _reason} ->
+          {:error, reason} ->
             # Field extraction failed, skip this field
+            Logger.debug("Field #{field_name} extraction failed: #{inspect(reason)}")
             acc
         end
       end)
 
     # Only return row if we got at least title and download
-    if Map.has_key?(field_values, "title") && Map.has_key?(field_values, "download") do
+    has_title = Map.has_key?(field_values, "title") || Map.has_key?(field_values, :title)
+    has_download = Map.has_key?(field_values, "download") || Map.has_key?(field_values, :download)
+
+    if has_title && has_download do
       field_values
     else
+      Logger.info(
+        "Row filtered out - title: #{has_title}, download: #{has_download}, fields: #{inspect(Map.keys(field_values))}"
+      )
+
       nil
     end
   end
 
-  defp extract_field_value(row, field_config) when is_map(field_config) do
+  defp extract_field_value(row, field_config, template_context) when is_map(field_config) do
     selector = Map.get(field_config, :selector) || Map.get(field_config, "selector")
     attribute = Map.get(field_config, :attribute) || Map.get(field_config, "attribute")
     filters = Map.get(field_config, :filters) || Map.get(field_config, "filters", [])
 
     with {:ok, raw_value} <- extract_raw_value(row, selector, attribute),
-         {:ok, filtered_value} <- apply_filters(raw_value, filters) do
+         {:ok, filtered_value} <- apply_filters(raw_value, filters, template_context) do
       {:ok, filtered_value}
     end
-  end
-
-  defp extract_field_value(row, selector) when is_binary(selector) do
-    # Simple selector string without config map
-    extract_raw_value(row, selector, nil)
   end
 
   defp extract_raw_value(row, selector, nil) do
@@ -265,7 +354,9 @@ defmodule Mydia.Indexers.CardigannResultParser do
   Applies Cardigann filters to a field value.
 
   Filters are applied in sequence, with each filter transforming
-  the value before passing to the next filter.
+  the value before passing to the next filter. Filter arguments
+  containing Go template syntax will be rendered using the provided
+  template context before application.
 
   ## Supported Filters
 
@@ -278,21 +369,87 @@ defmodule Mydia.Indexers.CardigannResultParser do
 
   ## Examples
 
-      iex> apply_filters("  test  ", [%{name: "trim"}])
+      iex> apply_filters("  test  ", [%{name: "trim"}], %{})
       {:ok, "test"}
 
-      iex> apply_filters("1.5 GB", [%{name: "replace", args: [" GB", ""]}])
+      iex> apply_filters("1.5 GB", [%{name: "replace", args: [" GB", ""]}], %{})
       {:ok, "1.5"}
-  """
-  @spec apply_filters(String.t(), list()) :: {:ok, String.t()} | {:error, term()}
-  def apply_filters(value, []), do: {:ok, value}
 
-  def apply_filters(value, [filter | rest]) do
-    case apply_single_filter(value, filter) do
-      {:ok, new_value} -> apply_filters(new_value, rest)
+      iex> apply_filters("text", [%{name: "append", args: ["{{ if .Config.flag }} suffix{{ else }}{{ end }}"]}], %{config: %{"flag" => true}})
+      {:ok, "text suffix"}
+  """
+  @spec apply_filters(String.t(), list(), map()) :: {:ok, String.t()} | {:error, term()}
+  def apply_filters(value, [], _template_context), do: {:ok, value}
+
+  def apply_filters(value, [filter | rest], template_context) do
+    # Render templates in filter arguments
+    rendered_filter = render_filter_templates(filter, template_context)
+
+    case apply_single_filter(value, rendered_filter) do
+      {:ok, new_value} -> apply_filters(new_value, rest, template_context)
       error -> error
     end
   end
+
+  # Backward compatibility - allow calling without template_context
+  def apply_filters(value, filters) when is_list(filters) do
+    apply_filters(value, filters, %{})
+  end
+
+  # Renders Go templates in filter arguments using the provided template context
+  defp render_filter_templates(filter, template_context) when is_map(filter) do
+    # Get args from filter (support both atom and string keys)
+    args = Map.get(filter, :args) || Map.get(filter, "args")
+    args_key = if Map.has_key?(filter, :args), do: :args, else: "args"
+
+    case args do
+      nil ->
+        filter
+
+      args when is_list(args) ->
+        # Render each arg that contains template syntax (if template_context available)
+        rendered_args =
+          if template_context == %{} or template_context == nil do
+            args
+          else
+            Enum.map(args, fn arg ->
+              render_template_in_string(arg, template_context)
+            end)
+          end
+
+        Map.put(filter, args_key, rendered_args)
+
+      args when is_binary(args) ->
+        # Single string arg - render template (if context available) and wrap in list for consistency
+        rendered_arg =
+          if template_context == %{} or template_context == nil do
+            args
+          else
+            render_template_in_string(args, template_context)
+          end
+
+        Map.put(filter, args_key, [rendered_arg])
+
+      _ ->
+        filter
+    end
+  end
+
+  defp render_filter_templates(filter, _template_context), do: filter
+
+  # Helper to render template in a string if it contains template syntax
+  defp render_template_in_string(value, template_context) when is_binary(value) do
+    if String.contains?(value, "{{") do
+      case CardigannTemplate.render(value, template_context, url_encode: false) do
+        {:ok, rendered} -> rendered
+        {:error, _} -> value
+      end
+    else
+      value
+    end
+  end
+
+  defp render_template_in_string(value, _template_context), do: value
 
   defp apply_single_filter(value, %{name: "replace", args: [pattern, replacement]}) do
     {:ok, String.replace(value, pattern, replacement)}
@@ -349,9 +506,25 @@ defmodule Mydia.Indexers.CardigannResultParser do
 
   defp extract_json_rows(json, %{rows: %{selector: selector}}) do
     case navigate_json_path(json, selector) do
-      {:ok, rows} when is_list(rows) -> {:ok, rows}
-      {:ok, single_value} -> {:ok, [single_value]}
-      error -> error
+      {:ok, rows} when is_list(rows) ->
+        {:ok, rows}
+
+      {:ok, single_value} ->
+        {:ok, [single_value]}
+
+      {:error, :path_not_found} ->
+        # Log available keys to help diagnose the issue
+        available_keys = if is_map(json), do: Map.keys(json), else: []
+
+        Logger.warning(
+          "JSON path not found: #{selector}. Available top-level keys: #{inspect(available_keys)}"
+        )
+
+        # Return empty results instead of failing
+        {:ok, []}
+
+      error ->
+        error
     end
   end
 
@@ -391,21 +564,21 @@ defmodule Mydia.Indexers.CardigannResultParser do
     {:error, :invalid_path}
   end
 
-  defp parse_json_row_fields(rows, %{fields: fields}) do
+  defp parse_json_row_fields(rows, %{fields: fields}, template_context) do
     parsed_rows =
       rows
       |> Enum.map(fn row ->
-        parse_single_json_row(row, fields)
+        parse_single_json_row(row, fields, template_context)
       end)
       |> Enum.filter(&(&1 != nil))
 
     {:ok, parsed_rows}
   end
 
-  defp parse_single_json_row(row, fields) when is_map(row) do
+  defp parse_single_json_row(row, fields, template_context) when is_map(row) do
     field_values =
       Enum.reduce(fields, %{}, fn {field_name, field_config}, acc ->
-        case extract_json_field_value(row, field_config) do
+        case extract_json_field_value(row, field_config, template_context) do
           {:ok, value} ->
             Map.put(acc, field_name, value)
 
@@ -422,13 +595,13 @@ defmodule Mydia.Indexers.CardigannResultParser do
     end
   end
 
-  defp extract_json_field_value(row, field_config) when is_map(field_config) do
+  defp extract_json_field_value(row, field_config, template_context) when is_map(field_config) do
     selector = Map.get(field_config, :selector) || Map.get(field_config, "selector")
     filters = Map.get(field_config, :filters) || Map.get(field_config, "filters", [])
 
     with {:ok, raw_value} <- get_json_value_by_selector(row, selector),
          {:ok, str_value} <- ensure_string(raw_value),
-         {:ok, filtered_value} <- apply_filters(str_value, filters) do
+         {:ok, filtered_value} <- apply_filters(str_value, filters, template_context) do
       {:ok, filtered_value}
     end
   end
