@@ -253,11 +253,11 @@ defmodule Mydia.Library.MetadataEnricher do
     num_seasons = get_number_of_seasons(media_item.metadata)
 
     if num_seasons && num_seasons > 0 do
-      # Fetch each season
+      # Fetch and create/update all episodes
       Enum.each(1..num_seasons, fn season_num ->
         case Metadata.fetch_season(config, provider_id, season_num) do
           {:ok, season_data} ->
-            create_episodes_for_season(media_item, season_data, match_result)
+            create_episodes_for_season(media_item, season_data)
 
           {:error, reason} ->
             Logger.warning("Failed to fetch season data",
@@ -267,6 +267,10 @@ defmodule Mydia.Library.MetadataEnricher do
             )
         end
       end)
+
+      # After all episodes are created, directly associate the file with the target episode(s)
+      # This is O(1) per episode instead of O(n) iteration through all episodes
+      associate_file_with_target_episodes(media_item, match_result)
     else
       Logger.warning("No season information available",
         media_item_id: media_item.id
@@ -285,7 +289,7 @@ defmodule Mydia.Library.MetadataEnricher do
 
   defp get_number_of_seasons(_), do: nil
 
-  defp create_episodes_for_season(media_item, season_data, match_result) do
+  defp create_episodes_for_season(media_item, season_data) do
     episodes = Map.get(season_data, :episodes, [])
     season_number = Map.get(season_data, :season_number)
 
@@ -296,23 +300,12 @@ defmodule Mydia.Library.MetadataEnricher do
           attrs = build_episode_attrs(media_item.id, season_number, episode_data)
 
           case Media.create_episode(attrs) do
-            {:ok, episode} ->
-              Logger.info("Created episode",
+            {:ok, _episode} ->
+              Logger.debug("Created episode",
                 media_item_id: media_item.id,
                 season: season_number,
                 episode: episode_data.episode_number
               )
-
-              # If this is the episode from the file we're processing, associate it
-              Logger.info("""
-              Attempting to associate file with newly created episode:
-                episode S#{episode.season_number}E#{episode.episode_number} (ID: #{episode.id})
-                has_media_file_id in match_result: #{Map.has_key?(match_result, :media_file_id)}
-                has_parsed_info in match_result: #{Map.has_key?(match_result, :parsed_info)}
-                match_result keys: #{inspect(Map.keys(match_result))}
-              """)
-
-              maybe_associate_episode_file(episode, match_result)
 
             {:error, reason} ->
               Logger.warning("Failed to create episode",
@@ -328,23 +321,12 @@ defmodule Mydia.Library.MetadataEnricher do
           attrs = build_episode_attrs(media_item.id, season_number, episode_data)
 
           case Media.update_episode(existing_episode, attrs) do
-            {:ok, updated_episode} ->
-              Logger.info("Updated episode",
+            {:ok, _updated_episode} ->
+              Logger.debug("Updated episode",
                 media_item_id: media_item.id,
                 season: season_number,
                 episode: episode_data.episode_number
               )
-
-              # Match the current file to this episode if applicable
-              Logger.info("Attempting to associate file with updated episode",
-                episode_id: updated_episode.id,
-                episode_season: updated_episode.season_number,
-                episode_number: updated_episode.episode_number,
-                has_media_file_id: Map.has_key?(match_result, :media_file_id),
-                match_result_keys: Map.keys(match_result)
-              )
-
-              maybe_associate_episode_file(updated_episode, match_result)
 
             {:error, reason} ->
               Logger.warning("Failed to update episode",
@@ -388,81 +370,80 @@ defmodule Mydia.Library.MetadataEnricher do
 
   defp parse_air_date(_), do: nil
 
-  defp maybe_associate_episode_file(
-         episode,
+  # Directly associates the media file with target episodes using O(1) lookups
+  # instead of iterating through all episodes
+  defp associate_file_with_target_episodes(
+         media_item,
          %{
            parsed_info: %{season: season, episodes: episode_numbers},
            media_file_id: media_file_id
          }
        )
-       when is_binary(media_file_id) do
-    Logger.info("maybe_associate_episode_file called with valid pattern match",
-      episode_id: episode.id,
-      episode_season: episode.season_number,
-      episode_number: episode.episode_number,
-      parsed_season: season,
-      parsed_episodes: episode_numbers,
-      media_file_id: media_file_id,
-      matches: episode.season_number == season && episode.episode_number in episode_numbers
+       when is_binary(media_file_id) and is_list(episode_numbers) do
+    Logger.info("Associating file with target episodes via direct lookup",
+      media_item_id: media_item.id,
+      season: season,
+      episode_numbers: episode_numbers,
+      media_file_id: media_file_id
     )
 
-    # Check if this episode matches the file we're processing
-    if episode.season_number == season && episode.episode_number in episode_numbers do
-      Logger.info("Episode matches file! Associating...",
-        episode_id: episode.id,
-        media_file_id: media_file_id
-      )
-
-      media_file =
-        Mydia.Library.get_media_file!(media_file_id)
-        |> Mydia.Repo.preload(:library_path)
-
-      case Mydia.Library.update_media_file(media_file, %{episode_id: episode.id}) do
-        {:ok, _updated_file} ->
-          Logger.info("Successfully associated episode with media file",
-            episode_id: episode.id,
-            media_file_id: media_file_id,
-            file_path: Mydia.Library.MediaFile.absolute_path(media_file)
+    # Direct lookup for each target episode - O(k) where k is the number of episodes in the file
+    # Typically k=1, sometimes k=2 for double episodes
+    Enum.each(episode_numbers, fn episode_number ->
+      case Media.get_episode_by_number(media_item.id, season, episode_number) do
+        nil ->
+          Logger.warning("Target episode not found for file association",
+            media_item_id: media_item.id,
+            season: season,
+            episode: episode_number
           )
 
-        {:error, changeset} ->
-          Logger.error("Failed to associate episode with media file",
-            episode_id: episode.id,
-            media_file_id: media_file_id,
-            errors: inspect(changeset.errors)
-          )
+        episode ->
+          associate_media_file_with_episode(episode, media_file_id)
       end
-    else
-      Logger.info("Episode does not match file",
-        episode_season: episode.season_number,
-        episode_number: episode.episode_number,
-        parsed_season: season,
-        parsed_episodes: episode_numbers
-      )
+    end)
+  end
+
+  defp associate_file_with_target_episodes(_media_item, match_result) do
+    # No media_file_id or parsed_info - nothing to associate
+    Logger.debug("Skipping file association - no media_file_id or parsed episode info",
+      has_media_file_id: Map.has_key?(match_result, :media_file_id),
+      has_parsed_info: Map.has_key?(match_result, :parsed_info)
+    )
+
+    :ok
+  end
+
+  defp associate_media_file_with_episode(episode, media_file_id) do
+    media_file =
+      Mydia.Library.get_media_file!(media_file_id)
+      |> Mydia.Repo.preload(:library_path)
+
+    case Mydia.Library.update_media_file(media_file, %{episode_id: episode.id}) do
+      {:ok, _updated_file} ->
+        Logger.info("Associated file with episode",
+          episode_id: episode.id,
+          season: episode.season_number,
+          episode: episode.episode_number,
+          media_file_id: media_file_id
+        )
+
+      {:error, changeset} ->
+        Logger.error("Failed to associate file with episode",
+          episode_id: episode.id,
+          media_file_id: media_file_id,
+          errors: inspect(changeset.errors)
+        )
     end
   rescue
     error ->
-      Logger.error("Exception in maybe_associate_episode_file",
-        error: inspect(error),
-        episode_id: episode.id
+      Logger.error("Exception associating file with episode",
+        episode_id: episode.id,
+        media_file_id: media_file_id,
+        error: inspect(error)
       )
 
       :ok
-  end
-
-  defp maybe_associate_episode_file(episode, match_result) do
-    Logger.warning("""
-    maybe_associate_episode_file PATTERN MATCH FAILED:
-      episode_id: #{episode.id}
-      has_parsed_info: #{Map.has_key?(match_result, :parsed_info)}
-      has_media_file_id: #{Map.has_key?(match_result, :media_file_id)}
-      media_file_id: #{inspect(Map.get(match_result, :media_file_id))}
-      media_file_id_type: #{if Map.has_key?(match_result, :media_file_id), do: "#{match_result.media_file_id |> then(&(&1.__struct__ || :integer))}", else: "N/A"}
-      match_result_keys: #{inspect(Map.keys(match_result))}
-      parsed_info: #{inspect(Map.get(match_result, :parsed_info))}
-    """)
-
-    :ok
   end
 
   # Validates that the media type is compatible with the library path type
