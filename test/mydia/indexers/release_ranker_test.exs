@@ -167,6 +167,69 @@ defmodule Mydia.Indexers.ReleaseRankerTest do
       assert first_quality == "720p"
     end
 
+    test "1080p preferred sorts before higher-scoring 2160p" do
+      # Simulate the user's scenario: 2160p has higher raw score but user prefers 1080p
+      results = [
+        build_result(%{
+          title: "Movie.2023.2160p.BluRay.HDR.x265-HighScore",
+          size: 4 * 1024 * 1024 * 1024,
+          seeders: 100,
+          quality: QualityParser.parse("Movie.2023.2160p.BluRay.HDR.x265")
+        }),
+        build_result(%{
+          title: "Movie.2023.1080p.BluRay.x264-LowerScore",
+          size: 8 * 1024 * 1024 * 1024,
+          seeders: 50,
+          quality: QualityParser.parse("Movie.2023.1080p.BluRay.x264")
+        })
+      ]
+
+      # Without preference - 2160p should win due to higher quality base score
+      ranked_no_pref = ReleaseRanker.rank_all(results)
+      first_no_pref = ranked_no_pref |> List.first() |> then(& &1.result.quality.resolution)
+      assert first_no_pref == "2160p", "Without preference, 2160p should rank first"
+
+      # With 1080p preference - 1080p should win despite lower raw score
+      ranked_with_pref = ReleaseRanker.rank_all(results, preferred_qualities: ["1080p"])
+      first_with_pref = ranked_with_pref |> List.first() |> then(& &1.result.quality.resolution)
+      assert first_with_pref == "1080p", "With 1080p preference, 1080p should rank first"
+
+      # 2160p should be sorted to the end
+      last_with_pref = ranked_with_pref |> List.last() |> then(& &1.result.quality.resolution)
+      assert last_with_pref == "2160p"
+    end
+
+    test "non-preferred resolutions get index 999 for sorting" do
+      results = [
+        build_result(%{
+          title: "Movie.2160p.BluRay",
+          seeders: 100,
+          quality: QualityParser.parse("Movie.2160p.BluRay")
+        }),
+        build_result(%{
+          title: "Movie.720p.BluRay",
+          seeders: 10,
+          quality: QualityParser.parse("Movie.720p.BluRay")
+        }),
+        build_result(%{
+          title: "Movie.1080p.BluRay",
+          seeders: 50,
+          quality: QualityParser.parse("Movie.1080p.BluRay")
+        })
+      ]
+
+      # Only 1080p is preferred
+      ranked = ReleaseRanker.rank_all(results, preferred_qualities: ["1080p"])
+
+      # 1080p should be first, then the rest sorted by score
+      resolutions = Enum.map(ranked, & &1.result.quality.resolution)
+      assert hd(resolutions) == "1080p"
+
+      # Non-preferred (2160p and 720p) should come after all preferred
+      non_preferred = tl(resolutions)
+      assert "1080p" not in non_preferred
+    end
+
     test "applies tag bonus correctly" do
       results = [
         build_result(%{
