@@ -24,88 +24,88 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def status_tab(assigns) do
     ~H"""
-    <div class="space-y-8 p-6">
+    <div class="space-y-6 sm:space-y-8 p-4 sm:p-6">
       <%!-- Top Row: System Info + Database --%>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
         <%!-- System Information --%>
         <div>
-          <h3 class="text-lg font-semibold flex items-center gap-2 mb-4">
+          <h3 class="text-lg font-semibold flex items-center gap-2 mb-3 sm:mb-4">
             <.icon name="hero-server" class="w-5 h-5 text-primary" /> System
           </h3>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="stat p-4 bg-base-200 rounded-lg">
-              <div class="stat-title text-sm">Version</div>
-              <div class="stat-value text-xl">
+          <div class="grid grid-cols-2 gap-2 sm:gap-4">
+            <div class="stat p-3 sm:p-4 bg-base-200 rounded-lg">
+              <div class="stat-title text-xs sm:text-sm">Version</div>
+              <div class="stat-value text-base sm:text-xl">
                 {@system_info.app_version}
                 <%= if @system_info.dev_mode do %>
-                  <span class="badge badge-warning badge-sm ml-1">dev</span>
+                  <span class="badge badge-warning badge-xs sm:badge-sm ml-1">dev</span>
                 <% end %>
               </div>
             </div>
-            <div class="stat p-4 bg-base-200 rounded-lg">
-              <div class="stat-title text-sm">Elixir</div>
-              <div class="stat-value text-xl">{@system_info.elixir_version}</div>
+            <div class="stat p-3 sm:p-4 bg-base-200 rounded-lg">
+              <div class="stat-title text-xs sm:text-sm">Elixir</div>
+              <div class="stat-value text-base sm:text-xl">{@system_info.elixir_version}</div>
             </div>
-            <div class="stat p-4 bg-base-200 rounded-lg">
-              <div class="stat-title text-sm">Memory</div>
-              <div class="stat-value text-xl">{@system_info.memory_used}</div>
+            <div class="stat p-3 sm:p-4 bg-base-200 rounded-lg">
+              <div class="stat-title text-xs sm:text-sm">Memory</div>
+              <div class="stat-value text-base sm:text-xl">{@system_info.memory_used}</div>
             </div>
-            <div class="stat p-4 bg-base-200 rounded-lg">
-              <div class="stat-title text-sm">Uptime</div>
-              <div class="stat-value text-xl">{@system_info.uptime}</div>
+            <div class="stat p-3 sm:p-4 bg-base-200 rounded-lg">
+              <div class="stat-title text-xs sm:text-sm">Uptime</div>
+              <div class="stat-value text-base sm:text-xl">{@system_info.uptime}</div>
             </div>
           </div>
         </div>
 
         <%!-- Database Information --%>
         <div>
-          <h3 class="text-lg font-semibold flex items-center gap-2 mb-4">
+          <h3 class="text-lg font-semibold flex items-center gap-2 mb-3 sm:mb-4 flex-wrap">
             <.icon name="hero-circle-stack" class="w-5 h-5 text-primary" /> Database
-            <span class={"badge #{health_badge(@database_info.health)}"}>
+            <span class={"badge badge-sm sm:badge-md #{health_badge(@database_info.health)}"}>
               {if @database_info.health == :healthy, do: "Healthy", else: "Unhealthy"}
             </span>
           </h3>
-          <div class="space-y-3 bg-base-200 rounded-lg p-5">
+          <div class="space-y-2 sm:space-y-3 bg-base-200 rounded-lg p-3 sm:p-5">
             <%= if @database_info.adapter == :postgres do %>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Adapter</span>
-                <span class="badge badge-info">PostgreSQL</span>
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-base-content/70 text-sm">Adapter</span>
+                <span class="badge badge-info badge-sm">PostgreSQL</span>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Host</span>
-                <code class="text-sm bg-base-300 px-2 py-1 rounded">
+              <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2">
+                <span class="text-base-content/70 text-sm">Host</span>
+                <code class="text-xs sm:text-sm bg-base-300 px-2 py-1 rounded truncate">
                   {@database_info.hostname}:{@database_info.port}
                 </code>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Database</span>
-                <code class="text-sm bg-base-300 px-2 py-1 rounded">
+              <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2">
+                <span class="text-base-content/70 text-sm">Database</span>
+                <code class="text-xs sm:text-sm bg-base-300 px-2 py-1 rounded truncate">
                   {@database_info.database}
                 </code>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Size</span>
-                <span class="font-medium">{@database_info.size}</span>
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-base-content/70 text-sm">Size</span>
+                <span class="font-medium text-sm">{@database_info.size}</span>
               </div>
             <% else %>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Adapter</span>
-                <span class="badge badge-info">SQLite</span>
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-base-content/70 text-sm">Adapter</span>
+                <span class="badge badge-info badge-sm">SQLite</span>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Location</span>
-                <code class="text-sm bg-base-300 px-2 py-1 rounded truncate max-w-[250px]">
+              <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2">
+                <span class="text-base-content/70 text-sm">Location</span>
+                <code class="text-xs sm:text-sm bg-base-300 px-2 py-1 rounded truncate max-w-full sm:max-w-[250px]">
                   {@database_info.path}
                 </code>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Size</span>
-                <span class="font-medium">{@database_info.size}</span>
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-base-content/70 text-sm">Size</span>
+                <span class="font-medium text-sm">{@database_info.size}</span>
               </div>
-              <div class="flex justify-between items-center">
-                <span class="text-base-content/70">Exists</span>
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-base-content/70 text-sm">Exists</span>
                 <span class={[
-                  "badge",
+                  "badge badge-sm",
                   if(@database_info.exists, do: "badge-success", else: "badge-error")
                 ]}>
                   {if @database_info.exists, do: "Yes", else: "No"}
@@ -119,7 +119,7 @@ defmodule MydiaWeb.AdminConfigLive.Components do
       <div class="divider"></div>
 
       <%!-- Bottom Row: Summary Tables in Grid --%>
-      <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-8">
         <%!-- Library Paths Summary --%>
         <div>
           <h3 class="text-lg font-semibold flex items-center gap-2 mb-4">
@@ -264,10 +264,10 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def general_settings_tab(assigns) do
     ~H"""
-    <div class="p-6 space-y-8">
+    <div class="p-4 sm:p-6 space-y-6 sm:space-y-8">
       <%!-- Crash Reporting Stats --%>
       <%= if @crash_report_stats.enabled do %>
-        <div class="stats stats-horizontal shadow bg-base-200 w-full">
+        <div class="stats stats-vertical sm:stats-horizontal shadow bg-base-200 w-full">
           <div class="stat">
             <div class="stat-figure text-warning">
               <.icon name="hero-bug-ant" class="w-8 h-8" />
@@ -312,34 +312,36 @@ defmodule MydiaWeb.AdminConfigLive.Components do
             {category}
           </h3>
 
-          <ul class="list bg-base-200 rounded-box">
+          <div class="bg-base-200 rounded-box divide-y divide-base-300">
             <%= for setting <- settings do %>
-              <li class="list-row items-center">
-                <%!-- Setting Info --%>
-                <div>
-                  <div class="font-medium">{setting.label}</div>
-                  <div class="text-xs opacity-50 font-mono">{setting.key}</div>
+              <div class="p-3 sm:p-4">
+                <%!-- Mobile: stacked layout, Desktop: flex row --%>
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  <%!-- Setting Info --%>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium flex items-center gap-2 flex-wrap">
+                      {setting.label}
+                      <.setting_source_badge source={setting.source} />
+                    </div>
+                    <div class="text-xs opacity-50 font-mono truncate">{setting.key}</div>
+                  </div>
+                  <%!-- Value Control --%>
+                  <div class="sm:ml-auto">
+                    <.setting_value_control
+                      setting={setting}
+                      category={category}
+                      editable={setting.source != :env}
+                    />
+                  </div>
                 </div>
-                <%!-- Source Badge --%>
-                <div>
-                  <.setting_source_badge source={setting.source} />
-                </div>
-                <%!-- Value Control --%>
-                <div>
-                  <.setting_value_control
-                    setting={setting}
-                    category={category}
-                    editable={setting.source != :env}
-                  />
-                </div>
-              </li>
+              </div>
             <% end %>
-          </ul>
+          </div>
         </div>
       <% end %>
 
       <%!-- Legend --%>
-      <div class="text-xs opacity-60 flex flex-wrap gap-4 justify-center">
+      <div class="text-xs opacity-60 flex flex-wrap gap-3 sm:gap-4 justify-center">
         <span class="flex items-center gap-1">
           <span class="badge badge-info badge-xs">ENV</span> Environment (read-only)
         </span>
@@ -393,7 +395,7 @@ defmodule MydiaWeb.AdminConfigLive.Components do
       <% is_nil(@setting.value) or @setting.value == "" -> %>
         <span class="badge badge-ghost badge-sm">Not set</span>
       <% @editable -> %>
-        <label class="input input-sm input-bordered flex items-center gap-2 w-44">
+        <label class="input input-sm input-bordered flex items-center gap-2 w-full sm:w-44">
           <input
             type={if @setting.type == :integer, do: "number", else: "text"}
             class="grow font-mono text-sm"
@@ -448,15 +450,16 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def quality_profiles_tab(assigns) do
     ~H"""
-    <div class="p-6 space-y-4" phx-hook="DownloadFile" id="quality-profiles-section">
-      <div class="flex items-center justify-between">
+    <div class="p-4 sm:p-6 space-y-4" phx-hook="DownloadFile" id="quality-profiles-section">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 class="text-lg font-semibold flex items-center gap-2">
           <.icon name="hero-sparkles" class="w-5 h-5 opacity-60" /> Quality Profiles
           <span class="badge badge-ghost">{length(@quality_profiles)}</span>
         </h2>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <button class="btn btn-sm btn-ghost" phx-click="show_browse_presets_modal">
-            <.icon name="hero-sparkles" class="w-4 h-4" /> Browse Presets
+            <.icon name="hero-sparkles" class="w-4 h-4" />
+            <span class="hidden sm:inline">Browse</span> Presets
           </button>
           <button class="btn btn-sm btn-ghost" phx-click="show_import_modal">
             <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> Import
@@ -473,7 +476,7 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           <span>No quality profiles configured yet. Create one to get started.</span>
         </div>
       <% else %>
-        <ul class="list bg-base-200 rounded-box">
+        <div class="bg-base-200 rounded-box divide-y divide-base-300">
           <%= for profile <- @quality_profiles do %>
             <% standards = profile.quality_standards || %{} %>
             <% video_codecs = get_in(standards, [:preferred_video_codecs]) || [] %>
@@ -483,108 +486,111 @@ defmodule MydiaWeb.AdminConfigLive.Components do
             <% episode_min = get_in(standards, [:episode_min_size_mb]) %>
             <% episode_max = get_in(standards, [:episode_max_size_mb]) %>
 
-            <li class="list-row">
-              <%!-- Profile Info --%>
-              <div class="list-col-grow">
-                <div class="font-semibold flex items-center gap-2">
-                  {profile.name}
-                  <%= if profile.is_system do %>
-                    <span class="badge badge-primary badge-xs">System</span>
-                  <% end %>
+            <div class="p-3 sm:p-4">
+              <%!-- Mobile: stacked, Desktop: flex row --%>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <%!-- Profile Info --%>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold flex items-center gap-2 flex-wrap">
+                    {profile.name}
+                    <%= if profile.is_system do %>
+                      <span class="badge badge-primary badge-xs">System</span>
+                    <% end %>
+                  </div>
+                  <div class="text-xs opacity-60 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                    <%= if video_codecs != [] do %>
+                      <span>
+                        <span class="font-medium">Codecs:</span>
+                        {Enum.take(video_codecs, 3) |> Enum.join(", ")}
+                        <%= if length(video_codecs) > 3 do %>
+                          <span class="opacity-50">+{length(video_codecs) - 3}</span>
+                        <% end %>
+                      </span>
+                    <% end %>
+                    <%= if resolutions != [] do %>
+                      <span>
+                        <span class="font-medium">Res:</span>
+                        {Enum.take(resolutions, 2) |> Enum.join(", ")}
+                        <%= if length(resolutions) > 2 do %>
+                          <span class="opacity-50">+{length(resolutions) - 2}</span>
+                        <% end %>
+                      </span>
+                    <% end %>
+                    <%= if movie_min || movie_max do %>
+                      <span class="hidden sm:inline">
+                        <span class="font-medium">Movies:</span>
+                        {movie_min || "0"}-{movie_max || "∞"}MB
+                      </span>
+                    <% end %>
+                    <%= if episode_min || episode_max do %>
+                      <span class="hidden sm:inline">
+                        <span class="font-medium">Episodes:</span>
+                        {episode_min || "0"}-{episode_max || "∞"}MB
+                      </span>
+                    <% end %>
+                  </div>
                 </div>
-                <div class="text-xs opacity-60 flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                  <%= if video_codecs != [] do %>
-                    <span>
-                      <span class="font-medium">Codecs:</span>
-                      {Enum.take(video_codecs, 3) |> Enum.join(", ")}
-                      <%= if length(video_codecs) > 3 do %>
-                        <span class="opacity-50">+{length(video_codecs) - 3}</span>
-                      <% end %>
-                    </span>
-                  <% end %>
-                  <%= if resolutions != [] do %>
-                    <span>
-                      <span class="font-medium">Res:</span>
-                      {Enum.take(resolutions, 2) |> Enum.join(", ")}
-                      <%= if length(resolutions) > 2 do %>
-                        <span class="opacity-50">+{length(resolutions) - 2}</span>
-                      <% end %>
-                    </span>
-                  <% end %>
-                  <%= if movie_min || movie_max do %>
-                    <span>
-                      <span class="font-medium">Movies:</span>
-                      {movie_min || "0"}-{movie_max || "∞"}MB
-                    </span>
-                  <% end %>
-                  <%= if episode_min || episode_max do %>
-                    <span>
-                      <span class="font-medium">Episodes:</span>
-                      {episode_min || "0"}-{episode_max || "∞"}MB
-                    </span>
-                  <% end %>
-                </div>
-              </div>
 
-              <%!-- Actions --%>
-              <div class="join">
-                <button
-                  class="btn btn-sm btn-ghost join-item"
-                  phx-click="edit_quality_profile"
-                  phx-value-id={profile.id}
-                  title="Edit"
-                >
-                  <.icon name="hero-pencil" class="w-4 h-4" />
-                </button>
-                <button
-                  class="btn btn-sm btn-ghost join-item"
-                  phx-click="duplicate_quality_profile"
-                  phx-value-id={profile.id}
-                  title="Duplicate"
-                >
-                  <.icon name="hero-document-duplicate" class="w-4 h-4" />
-                </button>
-                <div class="dropdown dropdown-end">
-                  <label tabindex="0" class="btn btn-sm btn-ghost join-item" title="Export">
-                    <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
-                  </label>
-                  <ul
-                    tabindex="0"
-                    class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-32"
+                <%!-- Actions --%>
+                <div class="join ml-auto sm:ml-0">
+                  <button
+                    class="btn btn-sm btn-ghost join-item"
+                    phx-click="edit_quality_profile"
+                    phx-value-id={profile.id}
+                    title="Edit"
                   >
-                    <li>
-                      <button
-                        phx-click="export_quality_profile"
-                        phx-value-id={profile.id}
-                        phx-value-format="json"
-                      >
-                        JSON
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        phx-click="export_quality_profile"
-                        phx-value-id={profile.id}
-                        phx-value-format="yaml"
-                      >
-                        YAML
-                      </button>
-                    </li>
-                  </ul>
+                    <.icon name="hero-pencil" class="w-4 h-4" />
+                  </button>
+                  <button
+                    class="btn btn-sm btn-ghost join-item"
+                    phx-click="duplicate_quality_profile"
+                    phx-value-id={profile.id}
+                    title="Duplicate"
+                  >
+                    <.icon name="hero-document-duplicate" class="w-4 h-4" />
+                  </button>
+                  <div class="dropdown dropdown-end">
+                    <label tabindex="0" class="btn btn-sm btn-ghost join-item" title="Export">
+                      <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
+                    </label>
+                    <ul
+                      tabindex="0"
+                      class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-32"
+                    >
+                      <li>
+                        <button
+                          phx-click="export_quality_profile"
+                          phx-value-id={profile.id}
+                          phx-value-format="json"
+                        >
+                          JSON
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          phx-click="export_quality_profile"
+                          phx-value-id={profile.id}
+                          phx-value-format="yaml"
+                        >
+                          YAML
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+                  <button
+                    class="btn btn-sm btn-ghost join-item text-error"
+                    phx-click="delete_quality_profile"
+                    phx-value-id={profile.id}
+                    data-confirm="Are you sure you want to delete this quality profile?"
+                    title="Delete"
+                  >
+                    <.icon name="hero-trash" class="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  class="btn btn-sm btn-ghost join-item text-error"
-                  phx-click="delete_quality_profile"
-                  phx-value-id={profile.id}
-                  data-confirm="Are you sure you want to delete this quality profile?"
-                  title="Delete"
-                >
-                  <.icon name="hero-trash" class="w-4 h-4" />
-                </button>
               </div>
-            </li>
+            </div>
           <% end %>
-        </ul>
+        </div>
       <% end %>
     </div>
     """
@@ -598,8 +604,8 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def download_clients_tab(assigns) do
     ~H"""
-    <div class="p-6 space-y-4">
-      <div class="flex items-center justify-between">
+    <div class="p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 class="text-lg font-semibold flex items-center gap-2">
           <.icon name="hero-arrow-down-tray" class="w-5 h-5 opacity-60" /> Download Clients
           <span class="badge badge-ghost">{length(@download_clients)}</span>
@@ -617,107 +623,111 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           </span>
         </div>
       <% else %>
-        <ul class="list bg-base-200 rounded-box">
+        <div class="bg-base-200 rounded-box divide-y divide-base-300">
           <%= for client <- @download_clients do %>
             <% health = Map.get(@client_health, client.id, %{status: :unknown}) %>
             <% is_runtime = Settings.runtime_config?(client) %>
 
-            <li class="list-row">
-              <%!-- Client Info --%>
-              <div class="list-col-grow">
-                <div class="font-semibold flex items-center gap-2">
-                  {client.name}
-                  <%= if is_runtime do %>
-                    <span
-                      class="badge badge-primary badge-xs tooltip"
-                      data-tip="Configured via environment variables (read-only)"
-                    >
-                      <.icon name="hero-lock-closed" class="w-3 h-3" /> ENV
+            <div class="p-3 sm:p-4">
+              <%!-- Mobile: stacked, Desktop: flex row --%>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <%!-- Client Info --%>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold flex items-center gap-2 flex-wrap">
+                    {client.name}
+                    <%= if is_runtime do %>
+                      <span
+                        class="badge badge-primary badge-xs tooltip"
+                        data-tip="Configured via environment variables (read-only)"
+                      >
+                        <.icon name="hero-lock-closed" class="w-3 h-3" /> ENV
+                      </span>
+                    <% end %>
+                  </div>
+                  <div class="text-xs opacity-60 mt-1 truncate">
+                    <span class="font-mono">
+                      {if client.use_ssl, do: "https://", else: "http://"}{client.host}:{client.port}
                     </span>
-                  <% end %>
+                    <%= if client.category do %>
+                      <span class="ml-2">Category: {client.category}</span>
+                    <% end %>
+                  </div>
                 </div>
-                <div class="text-xs opacity-60 flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                  <span class="font-mono">
-                    {if client.use_ssl, do: "https://", else: "http://"}{client.host}:{client.port}
+
+                <%!-- Status Badges + Actions row --%>
+                <div class="flex flex-wrap items-center gap-2">
+                  <%!-- Status Badges --%>
+                  <span class="badge badge-sm badge-outline">{client.type}</span>
+                  <span class={[
+                    "badge badge-sm",
+                    if(client.enabled, do: "badge-success", else: "badge-ghost")
+                  ]}>
+                    {if client.enabled, do: "Enabled", else: "Disabled"}
                   </span>
-                  <%= if client.category do %>
-                    <span>Category: {client.category}</span>
+                  <span class={"badge badge-sm #{health_status_badge_class(health.status)}"}>
+                    <.icon name={health_status_icon(health.status)} class="w-3 h-3 mr-1" />
+                    {health_status_label(health.status)}
+                  </span>
+                  <%= if health.status == :unhealthy and health[:error] do %>
+                    <div class="tooltip tooltip-left" data-tip={health.error}>
+                      <.icon name="hero-information-circle" class="w-4 h-4 text-error" />
+                    </div>
                   <% end %>
+                  <%= if health.status == :healthy and health[:details] && Map.get(health.details, :version) do %>
+                    <div
+                      class="tooltip tooltip-left"
+                      data-tip={"Version: #{health.details.version}"}
+                    >
+                      <.icon name="hero-information-circle" class="w-4 h-4 text-success" />
+                    </div>
+                  <% end %>
+
+                  <%!-- Actions --%>
+                  <div class="join ml-auto sm:ml-2">
+                    <button
+                      class="btn btn-sm btn-ghost join-item"
+                      phx-click="test_download_client"
+                      phx-value-id={client.id}
+                      title="Test Connection"
+                    >
+                      <.icon name="hero-signal" class="w-4 h-4" />
+                    </button>
+                    <%= if is_runtime do %>
+                      <div class="tooltip" data-tip="Cannot edit runtime-configured clients">
+                        <button class="btn btn-sm btn-ghost join-item" disabled>
+                          <.icon name="hero-pencil" class="w-4 h-4 opacity-30" />
+                        </button>
+                      </div>
+                      <div class="tooltip" data-tip="Cannot delete runtime-configured clients">
+                        <button class="btn btn-sm btn-ghost join-item" disabled>
+                          <.icon name="hero-trash" class="w-4 h-4 opacity-30" />
+                        </button>
+                      </div>
+                    <% else %>
+                      <button
+                        class="btn btn-sm btn-ghost join-item"
+                        phx-click="edit_download_client"
+                        phx-value-id={client.id}
+                        title="Edit"
+                      >
+                        <.icon name="hero-pencil" class="w-4 h-4" />
+                      </button>
+                      <button
+                        class="btn btn-sm btn-ghost join-item text-error"
+                        phx-click="delete_download_client"
+                        phx-value-id={client.id}
+                        data-confirm="Are you sure you want to delete this download client?"
+                        title="Delete"
+                      >
+                        <.icon name="hero-trash" class="w-4 h-4" />
+                      </button>
+                    <% end %>
+                  </div>
                 </div>
               </div>
-
-              <%!-- Status Badges --%>
-              <div class="flex items-center gap-2">
-                <span class="badge badge-sm badge-outline">{client.type}</span>
-                <span class={[
-                  "badge badge-sm",
-                  if(client.enabled, do: "badge-success", else: "badge-ghost")
-                ]}>
-                  {if client.enabled, do: "Enabled", else: "Disabled"}
-                </span>
-                <span class={"badge badge-sm #{health_status_badge_class(health.status)}"}>
-                  <.icon name={health_status_icon(health.status)} class="w-3 h-3 mr-1" />
-                  {health_status_label(health.status)}
-                </span>
-                <%= if health.status == :unhealthy and health[:error] do %>
-                  <div class="tooltip tooltip-left" data-tip={health.error}>
-                    <.icon name="hero-information-circle" class="w-4 h-4 text-error" />
-                  </div>
-                <% end %>
-                <%= if health.status == :healthy and health[:details] && Map.get(health.details, :version) do %>
-                  <div
-                    class="tooltip tooltip-left"
-                    data-tip={"Version: #{health.details.version}"}
-                  >
-                    <.icon name="hero-information-circle" class="w-4 h-4 text-success" />
-                  </div>
-                <% end %>
-              </div>
-
-              <%!-- Actions --%>
-              <div class="join">
-                <button
-                  class="btn btn-sm btn-ghost join-item"
-                  phx-click="test_download_client"
-                  phx-value-id={client.id}
-                  title="Test Connection"
-                >
-                  <.icon name="hero-signal" class="w-4 h-4" />
-                </button>
-                <%= if is_runtime do %>
-                  <div class="tooltip" data-tip="Cannot edit runtime-configured clients">
-                    <button class="btn btn-sm btn-ghost join-item" disabled>
-                      <.icon name="hero-pencil" class="w-4 h-4 opacity-30" />
-                    </button>
-                  </div>
-                  <div class="tooltip" data-tip="Cannot delete runtime-configured clients">
-                    <button class="btn btn-sm btn-ghost join-item" disabled>
-                      <.icon name="hero-trash" class="w-4 h-4 opacity-30" />
-                    </button>
-                  </div>
-                <% else %>
-                  <button
-                    class="btn btn-sm btn-ghost join-item"
-                    phx-click="edit_download_client"
-                    phx-value-id={client.id}
-                    title="Edit"
-                  >
-                    <.icon name="hero-pencil" class="w-4 h-4" />
-                  </button>
-                  <button
-                    class="btn btn-sm btn-ghost join-item text-error"
-                    phx-click="delete_download_client"
-                    phx-value-id={client.id}
-                    data-confirm="Are you sure you want to delete this download client?"
-                    title="Delete"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" />
-                  </button>
-                <% end %>
-              </div>
-            </li>
+            </div>
           <% end %>
-        </ul>
+        </div>
       <% end %>
     </div>
     """
@@ -731,8 +741,8 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def indexers_tab(assigns) do
     ~H"""
-    <div class="p-6 space-y-4">
-      <div class="flex items-center justify-between">
+    <div class="p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 class="text-lg font-semibold flex items-center gap-2">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 opacity-60" /> Indexers
           <span class="badge badge-ghost">{length(@indexers)}</span>
@@ -760,110 +770,116 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           </span>
         </div>
       <% else %>
-        <ul class="list bg-base-200 rounded-box">
+        <div class="bg-base-200 rounded-box divide-y divide-base-300">
           <%= for indexer <- @indexers do %>
             <% health = Map.get(@indexer_health, indexer.id, %{status: :unknown}) %>
             <% is_runtime = Settings.runtime_config?(indexer) %>
 
-            <li class="list-row">
-              <%!-- Indexer Info --%>
-              <div class="list-col-grow">
-                <div class="font-semibold flex items-center gap-2">
-                  {indexer.name}
-                  <%= if is_runtime do %>
-                    <span
-                      class="badge badge-primary badge-xs tooltip"
-                      data-tip="Configured via environment variables (read-only)"
-                    >
-                      <.icon name="hero-lock-closed" class="w-3 h-3" /> ENV
-                    </span>
+            <div class="p-3 sm:p-4">
+              <%!-- Mobile: stacked, Desktop: flex row --%>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <%!-- Indexer Info --%>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold flex items-center gap-2 flex-wrap">
+                    {indexer.name}
+                    <%= if is_runtime do %>
+                      <span
+                        class="badge badge-primary badge-xs tooltip"
+                        data-tip="Configured via environment variables (read-only)"
+                      >
+                        <.icon name="hero-lock-closed" class="w-3 h-3" /> ENV
+                      </span>
+                    <% end %>
+                  </div>
+                  <div class="text-xs opacity-60 mt-1 truncate">
+                    <span class="font-mono">{indexer.base_url}</span>
+                  </div>
+                </div>
+
+                <%!-- Status Badges + Actions row --%>
+                <div class="flex flex-wrap items-center gap-2">
+                  <%!-- Status Badges --%>
+                  <span class="badge badge-sm badge-outline">
+                    {format_indexer_type(indexer.type)}
+                  </span>
+                  <span class={[
+                    "badge badge-sm",
+                    if(indexer.enabled, do: "badge-success", else: "badge-ghost")
+                  ]}>
+                    {if indexer.enabled, do: "Enabled", else: "Disabled"}
+                  </span>
+                  <span class={"badge badge-sm #{health_status_badge_class(health.status)}"}>
+                    <.icon name={health_status_icon(health.status)} class="w-3 h-3 mr-1" />
+                    {health_status_label(health.status)}
+                  </span>
+                  <%= if health.status == :unhealthy and health[:error] do %>
+                    <div class="tooltip tooltip-left" data-tip={health.error}>
+                      <.icon name="hero-information-circle" class="w-4 h-4 text-error" />
+                    </div>
                   <% end %>
-                </div>
-                <div class="text-xs opacity-60 mt-1">
-                  <span class="font-mono">{indexer.base_url}</span>
-                </div>
-              </div>
+                  <%= if health.status == :healthy and health[:details] && Map.get(health.details, :version) do %>
+                    <div
+                      class="tooltip tooltip-left"
+                      data-tip={"Version: #{health.details.version}"}
+                    >
+                      <.icon name="hero-information-circle" class="w-4 h-4 text-success" />
+                    </div>
+                  <% end %>
+                  <%= if health[:consecutive_failures] && health.consecutive_failures > 0 do %>
+                    <div
+                      class="tooltip tooltip-left"
+                      data-tip={"#{health.consecutive_failures} consecutive failures"}
+                    >
+                      <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-warning" />
+                    </div>
+                  <% end %>
 
-              <%!-- Status Badges --%>
-              <div class="flex items-center gap-2">
-                <span class="badge badge-sm badge-outline">{format_indexer_type(indexer.type)}</span>
-                <span class={[
-                  "badge badge-sm",
-                  if(indexer.enabled, do: "badge-success", else: "badge-ghost")
-                ]}>
-                  {if indexer.enabled, do: "Enabled", else: "Disabled"}
-                </span>
-                <span class={"badge badge-sm #{health_status_badge_class(health.status)}"}>
-                  <.icon name={health_status_icon(health.status)} class="w-3 h-3 mr-1" />
-                  {health_status_label(health.status)}
-                </span>
-                <%= if health.status == :unhealthy and health[:error] do %>
-                  <div class="tooltip tooltip-left" data-tip={health.error}>
-                    <.icon name="hero-information-circle" class="w-4 h-4 text-error" />
-                  </div>
-                <% end %>
-                <%= if health.status == :healthy and health[:details] && Map.get(health.details, :version) do %>
-                  <div
-                    class="tooltip tooltip-left"
-                    data-tip={"Version: #{health.details.version}"}
-                  >
-                    <.icon name="hero-information-circle" class="w-4 h-4 text-success" />
-                  </div>
-                <% end %>
-                <%= if health[:consecutive_failures] && health.consecutive_failures > 0 do %>
-                  <div
-                    class="tooltip tooltip-left"
-                    data-tip={"#{health.consecutive_failures} consecutive failures"}
-                  >
-                    <.icon name="hero-exclamation-triangle" class="w-4 h-4 text-warning" />
-                  </div>
-                <% end %>
-              </div>
-
-              <%!-- Actions --%>
-              <div class="join">
-                <button
-                  class="btn btn-sm btn-ghost join-item"
-                  phx-click="test_indexer"
-                  phx-value-id={indexer.id}
-                  title="Test Connection"
-                >
-                  <.icon name="hero-signal" class="w-4 h-4" />
-                </button>
-                <%= if is_runtime do %>
-                  <div class="tooltip" data-tip="Cannot edit runtime-configured indexers">
-                    <button class="btn btn-sm btn-ghost join-item" disabled>
-                      <.icon name="hero-pencil" class="w-4 h-4 opacity-30" />
+                  <%!-- Actions --%>
+                  <div class="join ml-auto sm:ml-2">
+                    <button
+                      class="btn btn-sm btn-ghost join-item"
+                      phx-click="test_indexer"
+                      phx-value-id={indexer.id}
+                      title="Test Connection"
+                    >
+                      <.icon name="hero-signal" class="w-4 h-4" />
                     </button>
+                    <%= if is_runtime do %>
+                      <div class="tooltip" data-tip="Cannot edit runtime-configured indexers">
+                        <button class="btn btn-sm btn-ghost join-item" disabled>
+                          <.icon name="hero-pencil" class="w-4 h-4 opacity-30" />
+                        </button>
+                      </div>
+                      <div class="tooltip" data-tip="Cannot delete runtime-configured indexers">
+                        <button class="btn btn-sm btn-ghost join-item" disabled>
+                          <.icon name="hero-trash" class="w-4 h-4 opacity-30" />
+                        </button>
+                      </div>
+                    <% else %>
+                      <button
+                        class="btn btn-sm btn-ghost join-item"
+                        phx-click="edit_indexer"
+                        phx-value-id={indexer.id}
+                        title="Edit"
+                      >
+                        <.icon name="hero-pencil" class="w-4 h-4" />
+                      </button>
+                      <button
+                        class="btn btn-sm btn-ghost join-item text-error"
+                        phx-click="delete_indexer"
+                        phx-value-id={indexer.id}
+                        data-confirm="Are you sure you want to delete this indexer?"
+                        title="Delete"
+                      >
+                        <.icon name="hero-trash" class="w-4 h-4" />
+                      </button>
+                    <% end %>
                   </div>
-                  <div class="tooltip" data-tip="Cannot delete runtime-configured indexers">
-                    <button class="btn btn-sm btn-ghost join-item" disabled>
-                      <.icon name="hero-trash" class="w-4 h-4 opacity-30" />
-                    </button>
-                  </div>
-                <% else %>
-                  <button
-                    class="btn btn-sm btn-ghost join-item"
-                    phx-click="edit_indexer"
-                    phx-value-id={indexer.id}
-                    title="Edit"
-                  >
-                    <.icon name="hero-pencil" class="w-4 h-4" />
-                  </button>
-                  <button
-                    class="btn btn-sm btn-ghost join-item text-error"
-                    phx-click="delete_indexer"
-                    phx-value-id={indexer.id}
-                    data-confirm="Are you sure you want to delete this indexer?"
-                    title="Delete"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" />
-                  </button>
-                <% end %>
+                </div>
               </div>
-            </li>
+            </div>
           <% end %>
-        </ul>
+        </div>
       <% end %>
     </div>
     """
@@ -876,8 +892,8 @@ defmodule MydiaWeb.AdminConfigLive.Components do
 
   def library_paths_tab(assigns) do
     ~H"""
-    <div class="p-6 space-y-4">
-      <div class="flex items-center justify-between">
+    <div class="p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 class="text-lg font-semibold flex items-center gap-2">
           <.icon name="hero-folder" class="w-5 h-5 opacity-60" /> Library Paths
           <span class="badge badge-ghost">{length(@library_paths)}</span>
@@ -893,53 +909,57 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           <span>No library paths configured yet. Add a media directory to get started.</span>
         </div>
       <% else %>
-        <ul class="list bg-base-200 rounded-box">
+        <div class="bg-base-200 rounded-box divide-y divide-base-300">
           <%= for path <- @library_paths do %>
-            <li class="list-row">
-              <%!-- Path Info --%>
-              <div class="list-col-grow">
-                <div class="font-semibold font-mono text-sm">{path.path}</div>
-                <%= if path.last_scan_at do %>
-                  <div class="text-xs opacity-60 mt-1">
-                    Last scan: {Calendar.strftime(path.last_scan_at, "%Y-%m-%d %H:%M")}
+            <div class="p-3 sm:p-4">
+              <%!-- Mobile: stacked, Desktop: flex row --%>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <%!-- Path Info --%>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold font-mono text-sm truncate">{path.path}</div>
+                  <%= if path.last_scan_at do %>
+                    <div class="text-xs opacity-60 mt-1">
+                      Last scan: {Calendar.strftime(path.last_scan_at, "%Y-%m-%d %H:%M")}
+                    </div>
+                  <% end %>
+                </div>
+
+                <%!-- Status Badges + Actions row --%>
+                <div class="flex flex-wrap items-center gap-2">
+                  <%!-- Status Badges --%>
+                  <span class="badge badge-sm badge-outline">{path.type}</span>
+                  <span class={[
+                    "badge badge-sm",
+                    if(path.monitored, do: "badge-success", else: "badge-ghost")
+                  ]}>
+                    {if path.monitored, do: "Monitored", else: "Not Monitored"}
+                  </span>
+
+                  <%!-- Actions --%>
+                  <div class="join ml-auto sm:ml-2">
+                    <button
+                      class="btn btn-sm btn-ghost join-item"
+                      phx-click="edit_library_path"
+                      phx-value-id={path.id}
+                      title="Edit"
+                    >
+                      <.icon name="hero-pencil" class="w-4 h-4" />
+                    </button>
+                    <button
+                      class="btn btn-sm btn-ghost join-item text-error"
+                      phx-click="delete_library_path"
+                      phx-value-id={path.id}
+                      data-confirm="Are you sure you want to delete this library path?"
+                      title="Delete"
+                    >
+                      <.icon name="hero-trash" class="w-4 h-4" />
+                    </button>
                   </div>
-                <% end %>
+                </div>
               </div>
-
-              <%!-- Status Badges --%>
-              <div class="flex items-center gap-2">
-                <span class="badge badge-sm badge-outline">{path.type}</span>
-                <span class={[
-                  "badge badge-sm",
-                  if(path.monitored, do: "badge-success", else: "badge-ghost")
-                ]}>
-                  {if path.monitored, do: "Monitored", else: "Not Monitored"}
-                </span>
-              </div>
-
-              <%!-- Actions --%>
-              <div class="join">
-                <button
-                  class="btn btn-sm btn-ghost join-item"
-                  phx-click="edit_library_path"
-                  phx-value-id={path.id}
-                  title="Edit"
-                >
-                  <.icon name="hero-pencil" class="w-4 h-4" />
-                </button>
-                <button
-                  class="btn btn-sm btn-ghost join-item text-error"
-                  phx-click="delete_library_path"
-                  phx-value-id={path.id}
-                  data-confirm="Are you sure you want to delete this library path?"
-                  title="Delete"
-                >
-                  <.icon name="hero-trash" class="w-4 h-4" />
-                </button>
-              </div>
-            </li>
+            </div>
           <% end %>
-        </ul>
+        </div>
       <% end %>
     </div>
     """
