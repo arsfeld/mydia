@@ -1260,14 +1260,6 @@ defmodule MydiaWeb.MediaLive.Show do
      |> stream(:search_results, sorted_results, reset: true)}
   end
 
-  defp get_media_type(media_item) do
-    case media_item.type do
-      "movie" -> :movie
-      "tv_show" -> :episode
-      _ -> :movie
-    end
-  end
-
   def handle_async(:search, {:ok, {:error, reason}}, socket) do
     Logger.error("Search failed: #{inspect(reason)}")
 
@@ -1622,5 +1614,13 @@ defmodule MydiaWeb.MediaLive.Show do
      socket
      |> assign(:downloading_subtitle, false)
      |> put_flash(:error, "Subtitle download failed unexpectedly")}
+  end
+
+  defp get_media_type(media_item) do
+    case media_item.type do
+      "movie" -> :movie
+      "tv_show" -> :episode
+      _ -> :movie
+    end
   end
 end
