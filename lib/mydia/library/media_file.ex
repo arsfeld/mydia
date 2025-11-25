@@ -17,7 +17,7 @@ defmodule Mydia.Library.MediaFile do
     field :audio_codec, :string
     field :bitrate, :integer
     field :verified_at, :utc_datetime
-    field :metadata, :map
+    field :metadata, Mydia.Settings.JsonMapType
 
     # Relative path storage (Phase 1)
     field :relative_path, :string

@@ -114,8 +114,8 @@ defmodule Mydia.Media.EpisodeDataTypeTest do
   end
 
   describe "Ecto.Type callbacks" do
-    test "type/0 returns :map" do
-      assert EpisodeDataType.type() == :map
+    test "type/0 returns :string for text column compatibility" do
+      assert EpisodeDataType.type() == :string
     end
 
     test "cast/1 accepts EpisodeData struct" do
@@ -151,20 +151,21 @@ defmodule Mydia.Media.EpisodeDataTypeTest do
       assert {:ok, nil} = EpisodeDataType.cast(nil)
     end
 
-    test "load/1 converts database map to EpisodeData struct" do
-      db_map = %{
-        season_number: 1,
-        episode_number: 2,
-        name: "Database Episode",
-        overview: "Loaded from DB",
-        air_date: "2024-02-01",
-        runtime: 45,
-        still_path: "/test.jpg",
-        vote_average: 8.5,
-        vote_count: 100
-      }
+    test "load/1 converts JSON string to EpisodeData struct" do
+      json =
+        Jason.encode!(%{
+          "season_number" => 1,
+          "episode_number" => 2,
+          "name" => "Database Episode",
+          "overview" => "Loaded from DB",
+          "air_date" => "2024-02-01",
+          "runtime" => 45,
+          "still_path" => "/test.jpg",
+          "vote_average" => 8.5,
+          "vote_count" => 100
+        })
 
-      assert {:ok, %EpisodeData{} = episode_data} = EpisodeDataType.load(db_map)
+      assert {:ok, %EpisodeData{} = episode_data} = EpisodeDataType.load(json)
       assert episode_data.season_number == 1
       assert episode_data.episode_number == 2
       assert episode_data.name == "Database Episode"
@@ -172,7 +173,18 @@ defmodule Mydia.Media.EpisodeDataTypeTest do
       assert episode_data.vote_average == 8.5
     end
 
-    test "dump/1 converts EpisodeData struct to plain map" do
+    test "load/1 also handles plain maps for adapter compatibility" do
+      db_map = %{
+        season_number: 1,
+        episode_number: 2,
+        name: "Database Episode"
+      }
+
+      assert {:ok, %EpisodeData{} = episode_data} = EpisodeDataType.load(db_map)
+      assert episode_data.name == "Database Episode"
+    end
+
+    test "dump/1 converts EpisodeData struct to JSON string" do
       episode_data = %EpisodeData{
         season_number: 3,
         episode_number: 7,
@@ -185,17 +197,19 @@ defmodule Mydia.Media.EpisodeDataTypeTest do
         vote_count: 200
       }
 
-      assert {:ok, map} = EpisodeDataType.dump(episode_data)
-      assert is_map(map)
-      refute is_struct(map)
+      assert {:ok, json} = EpisodeDataType.dump(episode_data)
+      assert is_binary(json)
 
-      assert map.season_number == 3
-      assert map.episode_number == 7
-      assert map.name == "Dump Test"
+      # Verify the JSON can be decoded back
+      {:ok, map} = Jason.decode(json)
+      assert is_map(map)
+      assert map["season_number"] == 3
+      assert map["episode_number"] == 7
+      assert map["name"] == "Dump Test"
       # Date should be converted to ISO8601 string for DB storage
-      assert map.air_date == "2024-03-15"
-      assert map.runtime == 60
-      assert map.vote_average == 9.0
+      assert map["air_date"] == "2024-03-15"
+      assert map["runtime"] == 60
+      assert map["vote_average"] == 9.0
     end
 
     test "dump/1 handles nil air_date" do
@@ -206,8 +220,10 @@ defmodule Mydia.Media.EpisodeDataTypeTest do
         air_date: nil
       }
 
-      assert {:ok, map} = EpisodeDataType.dump(episode_data)
-      assert is_nil(map.air_date)
+      assert {:ok, json} = EpisodeDataType.dump(episode_data)
+      assert is_binary(json)
+      {:ok, map} = Jason.decode(json)
+      assert is_nil(map["air_date"])
     end
   end
 

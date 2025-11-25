@@ -16,7 +16,7 @@ defmodule Mydia.Downloads.Download do
     field :download_client_id, :string
     field :completed_at, :utc_datetime
     field :error_message, :string
-    field :metadata, :map
+    field :metadata, Mydia.Settings.JsonMapType
 
     # Import retry tracking fields
     field :import_retry_count, :integer, default: 0

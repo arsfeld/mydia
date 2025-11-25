@@ -12,7 +12,7 @@ defmodule Mydia.Indexers.CardigannSearchSession do
   @foreign_key_type :binary_id
 
   schema "cardigann_search_sessions" do
-    field :cookies, :map
+    field :cookies, Mydia.Settings.JsonMapType
     field :expires_at, :utc_datetime
 
     belongs_to :cardigann_definition, Mydia.Indexers.CardigannDefinition

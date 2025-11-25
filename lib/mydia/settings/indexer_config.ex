@@ -20,7 +20,7 @@ defmodule Mydia.Settings.IndexerConfig do
     field :indexer_ids, {:array, :string}
     field :categories, {:array, :string}
     field :rate_limit, :integer
-    field :connection_settings, :map
+    field :connection_settings, Mydia.Settings.JsonMapType
 
     belongs_to :updated_by, Mydia.Accounts.User
 

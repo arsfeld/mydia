@@ -143,8 +143,8 @@ defmodule Mydia.Media.MetadataTypeTest do
   end
 
   describe "Ecto.Type callbacks" do
-    test "type/0 returns :map" do
-      assert MetadataType.type() == :map
+    test "type/0 returns :string for text column compatibility" do
+      assert MetadataType.type() == :string
     end
 
     test "cast/1 accepts MediaMetadata struct" do
@@ -177,24 +177,37 @@ defmodule Mydia.Media.MetadataTypeTest do
       assert {:ok, nil} = MetadataType.cast(nil)
     end
 
-    test "load/1 converts database map to MediaMetadata struct" do
-      db_map = %{
-        provider_id: "603",
-        provider: :metadata_relay,
-        media_type: :movie,
-        title: "The Matrix",
-        cast: [
-          %{name: "Keanu Reeves", character: "Neo", order: 0}
-        ]
-      }
+    test "load/1 converts JSON string to MediaMetadata struct" do
+      json =
+        Jason.encode!(%{
+          "provider_id" => "603",
+          "provider" => "metadata_relay",
+          "media_type" => "movie",
+          "title" => "The Matrix",
+          "cast" => [
+            %{"name" => "Keanu Reeves", "character" => "Neo", "order" => 0}
+          ]
+        })
 
-      assert {:ok, %MediaMetadata{} = metadata} = MetadataType.load(db_map)
+      assert {:ok, %MediaMetadata{} = metadata} = MetadataType.load(json)
       assert metadata.title == "The Matrix"
       assert [%CastMember{} | _] = metadata.cast
       assert hd(metadata.cast).name == "Keanu Reeves"
     end
 
-    test "dump/1 converts MediaMetadata struct to plain map" do
+    test "load/1 also handles plain maps for adapter compatibility" do
+      db_map = %{
+        provider_id: "603",
+        provider: :metadata_relay,
+        media_type: :movie,
+        title: "The Matrix"
+      }
+
+      assert {:ok, %MediaMetadata{} = metadata} = MetadataType.load(db_map)
+      assert metadata.title == "The Matrix"
+    end
+
+    test "dump/1 converts MediaMetadata struct to JSON string" do
       metadata = %MediaMetadata{
         provider_id: "603",
         provider: :metadata_relay,
@@ -208,22 +221,23 @@ defmodule Mydia.Media.MetadataTypeTest do
         ]
       }
 
-      assert {:ok, map} = MetadataType.dump(metadata)
+      assert {:ok, json} = MetadataType.dump(metadata)
+      assert is_binary(json)
+
+      # Verify the JSON can be decoded back
+      {:ok, map} = Jason.decode(json)
       assert is_map(map)
-      refute is_struct(map)
+      assert map["title"] == "The Matrix"
+      assert map["provider_id"] == "603"
 
-      # Verify nested structs are converted to maps
-      assert is_list(map.cast)
-      assert [cast_map | _] = map.cast
-      assert is_map(cast_map)
-      refute is_struct(cast_map)
-      assert cast_map.name == "Keanu Reeves"
+      # Verify nested structs are converted to maps in JSON
+      assert is_list(map["cast"])
+      assert [cast_map | _] = map["cast"]
+      assert cast_map["name"] == "Keanu Reeves"
 
-      assert is_list(map.crew)
-      assert [crew_map | _] = map.crew
-      assert is_map(crew_map)
-      refute is_struct(crew_map)
-      assert crew_map.name == "Lana Wachowski"
+      assert is_list(map["crew"])
+      assert [crew_map | _] = map["crew"]
+      assert crew_map["name"] == "Lana Wachowski"
     end
   end
 

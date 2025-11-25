@@ -28,9 +28,9 @@ defmodule Mydia.Media.MetadataType do
   alias Mydia.Metadata.Structs.{MediaMetadata, CastMember, CrewMember, SeasonInfo}
 
   @doc """
-  Returns the underlying database type (:map).
+  Returns the underlying database type (:string for text columns).
   """
-  def type, do: :map
+  def type, do: :string
 
   @doc """
   Casts the given value to a MediaMetadata struct.
@@ -53,10 +53,22 @@ defmodule Mydia.Media.MetadataType do
   def cast(_), do: :error
 
   @doc """
-  Loads data from the database (plain map) and converts to MediaMetadata struct.
+  Loads data from the database (JSON string) and converts to MediaMetadata struct.
   """
   def load(nil), do: {:ok, nil}
+  def load(""), do: {:ok, nil}
 
+  def load(data) when is_binary(data) do
+    case Jason.decode(data) do
+      {:ok, map} when is_map(map) -> {:ok, map_to_struct(map)}
+      {:ok, _} -> :error
+      {:error, _} -> :error
+    end
+  rescue
+    e -> {:error, "Failed to load MediaMetadata: #{inspect(e)}"}
+  end
+
+  # Handle case where data is already a map (some adapters may do this)
   def load(data) when is_map(data) do
     {:ok, map_to_struct(data)}
   rescue
@@ -66,9 +78,12 @@ defmodule Mydia.Media.MetadataType do
   def load(_), do: :error
 
   @doc """
-  Dumps a MediaMetadata struct to a plain map for database storage.
+  Dumps a MediaMetadata struct to a JSON string for database storage.
   """
-  def dump(%MediaMetadata{} = metadata), do: {:ok, struct_to_map(metadata)}
+  def dump(%MediaMetadata{} = metadata) do
+    {:ok, Jason.encode!(struct_to_map(metadata))}
+  end
+
   def dump(nil), do: {:ok, nil}
   def dump(_), do: :error
 

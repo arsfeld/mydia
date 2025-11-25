@@ -752,7 +752,7 @@ defmodule Mydia.Media do
     MediaItem
     |> where([m], m.type == "movie")
     |> where([m], m.monitored == ^monitored)
-    |> where([m], not is_nil(fragment("?->>'release_date'", m.metadata)))
+    |> where([m], ^Mydia.DB.json_is_not_null(:metadata, "$.release_date"))
     |> Repo.all()
     |> Enum.filter(fn item ->
       case item.metadata do

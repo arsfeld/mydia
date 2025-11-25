@@ -24,7 +24,7 @@ defmodule Mydia.Settings.DownloadClientConfig do
     field :api_key, :string
     field :category, :string
     field :download_directory, :string
-    field :connection_settings, :map
+    field :connection_settings, Mydia.Settings.JsonMapType
 
     belongs_to :updated_by, Mydia.Accounts.User
 

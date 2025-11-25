@@ -21,12 +21,12 @@ defmodule Mydia.Indexers.CardigannDefinition do
     field :language, :string
     field :type, :string
     field :encoding, :string
-    field :links, :map
-    field :capabilities, :map
+    field :links, Mydia.Settings.JsonMapType
+    field :capabilities, Mydia.Settings.JsonMapType
     field :definition, :string
     field :schema_version, :string
     field :enabled, :boolean, default: false
-    field :config, :map
+    field :config, Mydia.Settings.JsonMapType
     field :last_synced_at, :utc_datetime
 
     # Health check fields

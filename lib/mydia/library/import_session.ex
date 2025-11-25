@@ -22,10 +22,10 @@ defmodule Mydia.Library.ImportSession do
     field :step, Ecto.Enum, values: @valid_steps, default: :select_path
     field :status, Ecto.Enum, values: @valid_statuses, default: :active
     field :scan_path, :string
-    field :session_data, :map
-    field :scan_stats, :map
-    field :import_progress, :map
-    field :import_results, :map
+    field :session_data, Mydia.Settings.JsonMapType
+    field :scan_stats, Mydia.Settings.JsonMapType
+    field :import_progress, Mydia.Settings.JsonMapType
+    field :import_results, Mydia.Settings.JsonMapType
     field :completed_at, :utc_datetime
     field :expires_at, :utc_datetime
 

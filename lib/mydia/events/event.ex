@@ -34,7 +34,7 @@ defmodule Mydia.Events.Event do
     field :resource_type, :string
     field :resource_id, :binary_id
     field :severity, Ecto.Enum, values: @severity_levels, default: :info
-    field :metadata, :map, default: %{}
+    field :metadata, Mydia.Settings.JsonMapType, default: %{}
 
     # Events are immutable - no updated_at
     timestamps(inserted_at: :inserted_at, updated_at: false, type: :utc_datetime)
