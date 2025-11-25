@@ -25,17 +25,18 @@ export class AdminConfigPage {
   constructor(private page: Page) {}
 
   // Tab Selectors
+  // Note: Tab labels use short names - "Settings", "Quality", "Clients", "Indexers", "Library"
 
   private get generalTab() {
-    return this.page.locator('button[role="tab"]:has-text("General Settings")');
+    return this.page.locator('button[role="tab"]:has-text("Settings")');
   }
 
   private get qualityTab() {
-    return this.page.locator('button[role="tab"]:has-text("Quality Profiles")');
+    return this.page.locator('button[role="tab"]:has-text("Quality")');
   }
 
   private get clientsTab() {
-    return this.page.locator('button[role="tab"]:has-text("Download Clients")');
+    return this.page.locator('button[role="tab"]:has-text("Clients")');
   }
 
   private get indexersTab() {
@@ -43,13 +44,13 @@ export class AdminConfigPage {
   }
 
   private get libraryTab() {
-    return this.page.locator('button[role="tab"]:has-text("Library Paths")');
+    return this.page.locator('button[role="tab"]:has-text("Library")');
   }
 
   // Indexer Selectors
 
   private get addIndexerButton() {
-    return this.page.locator('button:has-text("New Indexer")');
+    return this.page.locator('button[phx-click="new_indexer"]');
   }
 
   private get indexerModal() {
@@ -121,7 +122,7 @@ export class AdminConfigPage {
   // Download Client Selectors
 
   private get addDownloadClientButton() {
-    return this.page.locator('button:has-text("New Client")');
+    return this.page.locator('button[phx-click="new_download_client"]');
   }
 
   private get clientModal() {
@@ -505,7 +506,7 @@ export class AdminConfigPage {
    */
   async assertPageLoaded() {
     await expect(
-      this.page.locator('h1:has-text("Configuration Management")'),
+      this.page.locator('h1:has-text("Configuration")'),
     ).toBeVisible();
   }
 
