@@ -200,11 +200,15 @@
                   </div>
                   <%!-- Mobile-only compact info --%>
                   <div class="flex gap-2 mt-2 md:hidden flex-wrap">
-                    <span class="badge badge-ghost badge-sm">
-                      <.icon name="hero-arrow-up" class="w-3 h-3 mr-1" /> {result.seeders}
-                      <span class="mx-1 text-base-content/30">/</span>
-                      <.icon name="hero-arrow-down" class="w-3 h-3 mr-1" /> {result.leechers}
-                    </span>
+                    <%= if result.download_protocol == :nzb do %>
+                      <span class="badge badge-info badge-sm">Usenet</span>
+                    <% else %>
+                      <span class="badge badge-ghost badge-sm">
+                        <.icon name="hero-arrow-up" class="w-3 h-3 mr-1" /> {result.seeders}
+                        <span class="mx-1 text-base-content/30">/</span>
+                        <.icon name="hero-arrow-down" class="w-3 h-3 mr-1" /> {result.leechers}
+                      </span>
+                    <% end %>
                     <span class="badge badge-outline badge-sm">{result.indexer}</span>
                   </div>
                 </div>
@@ -222,31 +226,35 @@
                   {format_size(result)}
                 </div>
               </td>
-              <%!-- Health Column (Seeders/Peers with indicator) --%>
+              <%!-- Health Column (Seeders/Peers with indicator) - only for torrents --%>
               <td class="hidden md:table-cell">
-                <div class="flex items-center gap-3">
-                  <%!-- Health indicator --%>
-                  <div
-                    class={"radial-progress #{health_color(health_score(result))}"}
-                    style={"--value:#{trunc(health_score(result) * 100)}; --size:3rem; --thickness: 3px;"}
-                    role="progressbar"
-                  >
-                    <span class="text-xs font-semibold">
-                      {trunc(health_score(result) * 100)}%
-                    </span>
-                  </div>
-                  <%!-- Seeders/Peers --%>
-                  <div class="flex flex-col gap-0.5">
-                    <div class="flex items-center gap-1.5">
-                      <.icon name="hero-arrow-up" class="w-3.5 h-3.5 text-success" />
-                      <span class="text-sm font-semibold text-success">{result.seeders}</span>
+                <%= if result.download_protocol == :nzb do %>
+                  <span class="text-base-content/50 text-sm">N/A</span>
+                <% else %>
+                  <div class="flex items-center gap-3">
+                    <%!-- Health indicator --%>
+                    <div
+                      class={"radial-progress #{health_color(health_score(result))}"}
+                      style={"--value:#{trunc(health_score(result) * 100)}; --size:3rem; --thickness: 3px;"}
+                      role="progressbar"
+                    >
+                      <span class="text-xs font-semibold">
+                        {trunc(health_score(result) * 100)}%
+                      </span>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                      <.icon name="hero-arrow-down" class="w-3.5 h-3.5 text-base-content/50" />
-                      <span class="text-sm text-base-content/70">{result.leechers}</span>
+                    <%!-- Seeders/Peers --%>
+                    <div class="flex flex-col gap-0.5">
+                      <div class="flex items-center gap-1.5">
+                        <.icon name="hero-arrow-up" class="w-3.5 h-3.5 text-success" />
+                        <span class="text-sm font-semibold text-success">{result.seeders}</span>
+                      </div>
+                      <div class="flex items-center gap-1.5">
+                        <.icon name="hero-arrow-down" class="w-3.5 h-3.5 text-base-content/50" />
+                        <span class="text-sm text-base-content/70">{result.leechers}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                <% end %>
               </td>
               <%!-- Source Column (Indexer + Date) --%>
               <td class="hidden lg:table-cell">
@@ -363,18 +371,25 @@
               </div>
             </div>
             <div class="stat bg-base-200 rounded-lg p-4">
-              <div class="stat-title text-xs">Health</div>
-              <div class="stat-value text-lg">
-                <div
-                  class={"radial-progress #{health_color(health_score(@selected_result))}"}
-                  style={"--value:#{trunc(health_score(@selected_result) * 100)}; --size:4rem; --thickness: 4px;"}
-                  role="progressbar"
-                >
-                  <span class="text-sm font-semibold">
-                    {trunc(health_score(@selected_result) * 100)}%
-                  </span>
+              <%= if @selected_result.download_protocol == :nzb do %>
+                <div class="stat-title text-xs">Protocol</div>
+                <div class="stat-value text-lg">
+                  <span class="badge badge-info">Usenet</span>
                 </div>
-              </div>
+              <% else %>
+                <div class="stat-title text-xs">Health</div>
+                <div class="stat-value text-lg">
+                  <div
+                    class={"radial-progress #{health_color(health_score(@selected_result))}"}
+                    style={"--value:#{trunc(health_score(@selected_result) * 100)}; --size:4rem; --thickness: 4px;"}
+                    role="progressbar"
+                  >
+                    <span class="text-sm font-semibold">
+                      {trunc(health_score(@selected_result) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              <% end %>
             </div>
             <div class="stat bg-base-200 rounded-lg p-4">
               <div class="stat-title text-xs">Source</div>
@@ -383,23 +398,25 @@
               </div>
             </div>
           </div>
-          <%!-- Seeders and Leechers --%>
-          <div class="grid grid-cols-2 gap-4 mb-6">
-            <div class="flex items-center gap-3 bg-base-200 rounded-lg p-4">
-              <.icon name="hero-arrow-up" class="w-8 h-8 text-success" />
-              <div>
-                <div class="text-xs text-base-content/70">Seeders</div>
-                <div class="text-2xl font-bold text-success">{@selected_result.seeders}</div>
+          <%!-- Seeders and Leechers - only for torrents --%>
+          <%= if @selected_result.download_protocol != :nzb do %>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+              <div class="flex items-center gap-3 bg-base-200 rounded-lg p-4">
+                <.icon name="hero-arrow-up" class="w-8 h-8 text-success" />
+                <div>
+                  <div class="text-xs text-base-content/70">Seeders</div>
+                  <div class="text-2xl font-bold text-success">{@selected_result.seeders}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 bg-base-200 rounded-lg p-4">
+                <.icon name="hero-arrow-down" class="w-8 h-8 text-info" />
+                <div>
+                  <div class="text-xs text-base-content/70">Leechers</div>
+                  <div class="text-2xl font-bold text-info">{@selected_result.leechers}</div>
+                </div>
               </div>
             </div>
-            <div class="flex items-center gap-3 bg-base-200 rounded-lg p-4">
-              <.icon name="hero-arrow-down" class="w-8 h-8 text-info" />
-              <div>
-                <div class="text-xs text-base-content/70">Leechers</div>
-                <div class="text-2xl font-bold text-info">{@selected_result.leechers}</div>
-              </div>
-            </div>
-          </div>
+          <% end %>
           <%!-- Additional Info --%>
           <div class="space-y-3 mb-6">
             <%= if @selected_result.published_at do %>
