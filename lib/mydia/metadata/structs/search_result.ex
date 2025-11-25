@@ -54,13 +54,30 @@ defmodule Mydia.Metadata.Structs.SearchResult do
   @doc """
   Creates a SearchResult struct from a raw API response map.
 
+  ## Parameters
+
+    - `data` - Raw API response map
+    - `opts` - Options (optional)
+      - `:media_type` - Override media type (`:movie` or `:tv_show`)
+        Used when the search endpoint implies the type but the API
+        response doesn't include `media_type` field.
+
   ## Examples
 
       iex> from_api_response(%{"id" => 123, "title" => "The Matrix", ...})
       %SearchResult{provider_id: "123", title: "The Matrix", ...}
+
+      iex> from_api_response(%{"id" => 456, "name" => "Breaking Bad", ...}, media_type: :tv_show)
+      %SearchResult{provider_id: "456", title: "Breaking Bad", media_type: :tv_show, ...}
   """
-  def from_api_response(data) when is_map(data) do
-    media_type = normalize_media_type(data["media_type"])
+  def from_api_response(data, opts \\ []) when is_map(data) do
+    # Use override media_type if provided, otherwise try to infer from API response
+    media_type =
+      case Keyword.get(opts, :media_type) do
+        type when type in [:movie, :tv_show] -> type
+        _ -> normalize_media_type(data["media_type"])
+      end
+
     title = get_title(data, media_type)
     year = extract_year(data, media_type)
 

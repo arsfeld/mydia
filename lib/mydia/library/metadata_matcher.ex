@@ -38,8 +38,9 @@ defmodule Mydia.Library.MetadataMatcher do
   def match_file(file_path, opts \\ []) do
     config = Keyword.get(opts, :config, Metadata.default_relay_config())
 
-    # Parse the file name
-    parsed = FileParser.parse(file_path)
+    # Parse the file using full path to leverage folder structure for TV shows
+    # This prioritizes folder names like "/media/tv/Bluey/Season 03/" over filename parsing
+    parsed = FileParser.parse_with_path(file_path)
 
     case parsed.type do
       :movie ->
@@ -282,12 +283,17 @@ defmodule Mydia.Library.MetadataMatcher do
   # Calculate match score for series-level matching
   defp calculate_series_match_score(result, parsed) do
     base_score = 0.5
+    title_sim = title_similarity(result.title, parsed.title)
 
     score =
       base_score
-      |> add_score(title_similarity(result.title, parsed.title), 0.35)
+      |> add_score(title_sim, 0.2)
       |> add_score(year_match?(result.year, parsed.year), 0.1)
-      |> add_score(result.popularity > 10, 0.05)
+      |> add_score(popularity_score(result.popularity), 0.1)
+      # Bonus for exact title match
+      |> add_score(exact_title_match?(result.title, parsed.title), 0.15)
+      # Penalty for derivative titles
+      |> add_score(title_derivative_penalty(result.title, parsed.title), 1.0)
 
     min(score, 1.0)
   end
@@ -481,25 +487,35 @@ defmodule Mydia.Library.MetadataMatcher do
 
   defp calculate_movie_match_score(result, parsed) do
     base_score = 0.5
+    title_sim = title_similarity(result.title, parsed.title)
 
     score =
       base_score
-      |> add_score(title_similarity(result.title, parsed.title), 0.3)
+      |> add_score(title_sim, 0.2)
       |> add_score(year_match?(result.year, parsed.year), 0.15)
-      |> add_score(result.popularity > 10, 0.05)
+      |> add_score(popularity_score(result.popularity), 0.1)
+      # Bonus for exact title match (when search exactly matches result title)
+      |> add_score(exact_title_match?(result.title, parsed.title), 0.1)
+      # Penalty for derivative titles (prefer "Inception" over "Inception: The IMAX Experience")
+      |> add_score(title_derivative_penalty(result.title, parsed.title), 1.0)
 
     min(score, 1.0)
   end
 
   defp calculate_tv_match_score(result, parsed) do
     base_score = 0.5
+    title_sim = title_similarity(result.title, parsed.title)
 
     score =
       base_score
-      |> add_score(title_similarity(result.title, parsed.title), 0.3)
+      |> add_score(title_sim, 0.25)
       |> add_score(year_match?(result.year, parsed.year), 0.1)
-      |> add_score(result.popularity > 10, 0.05)
+      |> add_score(popularity_score(result.popularity), 0.1)
       |> add_score(result.first_air_date != nil, 0.05)
+      # Bonus for exact title match (when search exactly matches result title)
+      |> add_score(exact_title_match?(result.title, parsed.title), 0.15)
+      # Penalty for derivative titles (prefer "Bluey" over "Bluey Cookalongs")
+      |> add_score(title_derivative_penalty(result.title, parsed.title), 1.0)
 
     min(score, 1.0)
   end
@@ -507,6 +523,55 @@ defmodule Mydia.Library.MetadataMatcher do
   defp add_score(current, true, amount), do: current + amount
   defp add_score(current, score, amount) when is_float(score), do: current + score * amount
   defp add_score(current, _false_or_nil, _amount), do: current
+
+  # Normalized popularity score using logarithmic scaling
+  # Returns 0.0 to 1.0 based on TMDB popularity (typically 0-1000+)
+  # Main shows like "Bluey" have popularity ~200+, spin-offs are typically <50
+  defp popularity_score(nil), do: 0.0
+  defp popularity_score(popularity) when popularity <= 0, do: 0.0
+
+  defp popularity_score(popularity) do
+    # Log scale: popularity of 10 = 0.25, 50 = 0.5, 200 = 0.75, 1000 = 1.0
+    # Formula: min(log10(popularity) / 3, 1.0)
+    min(:math.log10(popularity) / 3, 1.0)
+  end
+
+  # Check if the result title exactly matches the search query (after normalization)
+  defp exact_title_match?(result_title, search_title)
+       when is_binary(result_title) and is_binary(search_title) do
+    norm_result = normalize_title(result_title)
+    norm_search = normalize_title(search_title)
+    norm_result == norm_search
+  end
+
+  defp exact_title_match?(_result_title, _search_title), do: false
+
+  # Calculate penalty for derivative titles
+  # When searching for "Bluey" and result is "Bluey Cookalongs", we want to prefer "Bluey"
+  # Returns a negative value (penalty) when result title is longer than search query
+  # and search query is a substring of result title
+  defp title_derivative_penalty(result_title, search_title)
+       when is_binary(result_title) and is_binary(search_title) do
+    norm_result = String.downcase(result_title) |> String.trim()
+    norm_search = String.downcase(search_title) |> String.trim()
+
+    # Only apply penalty if search is a proper substring of result
+    # (i.e., result is "Bluey Cookalongs" and search is "Bluey")
+    if norm_result != norm_search and String.contains?(norm_result, norm_search) do
+      # Penalty proportional to how much extra content is in the result title
+      # "Bluey" (5 chars) vs "Bluey Cookalongs" (16 chars) = penalty
+      search_len = String.length(norm_search)
+      result_len = String.length(norm_result)
+      extra_ratio = (result_len - search_len) / result_len
+
+      # Scale to -0.15 max penalty (negative because we want to reduce score)
+      -extra_ratio * 0.15
+    else
+      0.0
+    end
+  end
+
+  defp title_derivative_penalty(_result_title, _search_title), do: 0.0
 
   defp title_similarity(title1, title2) when is_binary(title1) and is_binary(title2) do
     # Check for substring match on lightly normalized versions first

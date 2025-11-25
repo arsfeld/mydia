@@ -1,8 +1,6 @@
 defmodule Mydia.Library.MetadataMatcherTest do
   use ExUnit.Case, async: true
 
-  alias Mydia.Library.MetadataMatcher
-
   # Note: These tests would typically use mocks or fixtures for metadata API responses
   # For now, they test the matching logic with sample data structures
 
@@ -221,28 +219,206 @@ defmodule Mydia.Library.MetadataMatcherTest do
     end
   end
 
+  describe "disambiguation - main series vs spin-offs" do
+    test "prefers exact title match over spin-off (Bluey vs Bluey Cookalongs)" do
+      parsed = %{
+        type: :tv_show,
+        title: "Bluey",
+        year: nil,
+        season: 3,
+        episodes: [1],
+        quality: %{resolution: "2160p"},
+        confidence: 0.9
+      }
+
+      # Main series - exact match, high popularity
+      main_series = %{
+        provider_id: "82728",
+        title: "Bluey",
+        year: 2018,
+        first_air_date: "2018-10-01",
+        popularity: 200.0
+      }
+
+      # Spin-off - contains search term, lower popularity
+      spin_off = %{
+        provider_id: "225191",
+        title: "Bluey Cookalongs",
+        year: 2023,
+        first_air_date: "2023-09-01",
+        popularity: 15.0
+      }
+
+      main_score = calculate_test_tv_score(main_series, parsed)
+      spinoff_score = calculate_test_tv_score(spin_off, parsed)
+
+      # Main series should score higher
+      assert main_score > spinoff_score,
+             "Main series should score higher. Main: #{main_score}, Spin-off: #{spinoff_score}"
+
+      # Difference should be significant (not just barely higher)
+      assert main_score - spinoff_score >= 0.1,
+             "Score difference should be significant: #{main_score - spinoff_score}"
+    end
+
+    test "prefers exact title match when both have similar popularity" do
+      parsed = %{
+        type: :tv_show,
+        title: "Bluey",
+        year: nil,
+        season: 1,
+        episodes: [1],
+        quality: %{},
+        confidence: 0.9
+      }
+
+      # Even with equal popularity, exact match should win
+      exact_match = %{
+        provider_id: "82728",
+        title: "Bluey",
+        year: 2018,
+        first_air_date: "2018-10-01",
+        popularity: 50.0
+      }
+
+      derivative = %{
+        provider_id: "225191",
+        title: "Bluey Cookalongs",
+        year: 2023,
+        first_air_date: "2023-09-01",
+        popularity: 50.0
+      }
+
+      exact_score = calculate_test_tv_score(exact_match, parsed)
+      deriv_score = calculate_test_tv_score(derivative, parsed)
+
+      assert exact_score > deriv_score,
+             "Exact match should win even with same popularity. Exact: #{exact_score}, Derivative: #{deriv_score}"
+    end
+
+    test "higher popularity breaks ties for similar titles" do
+      parsed = %{
+        type: :tv_show,
+        title: "The Office",
+        year: nil,
+        season: 1,
+        episodes: [1],
+        quality: %{},
+        confidence: 0.9
+      }
+
+      # US version - very popular (using lower values to avoid hitting max score cap)
+      us_version = %{
+        provider_id: "2316",
+        title: "The Office",
+        year: 2005,
+        first_air_date: "2005-03-24",
+        popularity: 100.0
+      }
+
+      # UK version - less popular
+      uk_version = %{
+        provider_id: "2987",
+        title: "The Office",
+        year: 2001,
+        first_air_date: "2001-07-09",
+        popularity: 10.0
+      }
+
+      us_score = calculate_test_tv_score(us_version, parsed)
+      uk_score = calculate_test_tv_score(uk_version, parsed)
+
+      # For exact title matches with no year, popularity should be the tiebreaker
+      # Both should score high (>0.95), but US version should be slightly higher
+      assert us_score >= uk_score,
+             "Higher popularity should help with same title. US: #{us_score}, UK: #{uk_score}"
+
+      # The US version should have a better score due to higher popularity
+      # (unless both hit the max cap)
+      assert us_score >= 0.95, "Exact match should score very high"
+      assert uk_score >= 0.90, "Exact match should score high even with lower popularity"
+    end
+
+    test "derivative title penalty is proportional to extra content" do
+      parsed = %{
+        type: :tv_show,
+        title: "Bluey",
+        year: nil,
+        season: 1,
+        episodes: [1],
+        quality: %{},
+        confidence: 0.9
+      }
+
+      # Shorter derivative gets less penalty
+      short_deriv = %{
+        provider_id: "1",
+        title: "Bluey: Special",
+        year: 2023,
+        first_air_date: "2023-01-01",
+        popularity: 50.0
+      }
+
+      # Longer derivative gets more penalty
+      long_deriv = %{
+        provider_id: "2",
+        title: "Bluey Cookalongs: The Complete Collection",
+        year: 2023,
+        first_air_date: "2023-01-01",
+        popularity: 50.0
+      }
+
+      short_score = calculate_test_tv_score(short_deriv, parsed)
+      long_score = calculate_test_tv_score(long_deriv, parsed)
+
+      assert short_score > long_score,
+             "Shorter derivative should score higher. Short: #{short_score}, Long: #{long_score}"
+    end
+
+    test "popularity scoring uses logarithmic scale" do
+      # Test that popularity scores scale logarithmically
+      # 10 should be ~0.33, 50 ~0.56, 200 ~0.77, 1000 = 1.0
+      assert_in_delta test_popularity_score(10), 0.33, 0.05
+      assert_in_delta test_popularity_score(50), 0.57, 0.05
+      assert_in_delta test_popularity_score(200), 0.77, 0.05
+      assert test_popularity_score(1000) == 1.0
+    end
+
+    test "handles nil popularity gracefully" do
+      assert test_popularity_score(nil) == 0.0
+      assert test_popularity_score(0) == 0.0
+      assert test_popularity_score(-5) == 0.0
+    end
+  end
+
   # Helper functions to test private logic
   # In a real implementation, these would call the actual private functions
   # or we'd use mocks to test the full public API
 
   defp calculate_test_movie_score(result, parsed) do
     base_score = 0.5
+    title_sim = test_title_similarity(result.title, parsed.title)
 
     base_score
-    |> add_test_score(test_title_similarity(result.title, parsed.title), 0.3)
+    |> add_test_score(title_sim, 0.2)
     |> add_test_score(test_year_match(result.year, parsed.year), 0.15)
-    |> add_test_score(result.popularity > 10, 0.05)
+    |> add_test_score(test_popularity_score(result.popularity), 0.1)
+    |> add_test_score(test_exact_title_match?(result.title, parsed.title), 0.1)
+    |> add_test_score(test_title_derivative_penalty(result.title, parsed.title), 1.0)
     |> min(1.0)
   end
 
   defp calculate_test_tv_score(result, parsed) do
     base_score = 0.5
+    title_sim = test_title_similarity(result.title, parsed.title)
 
     base_score
-    |> add_test_score(test_title_similarity(result.title, parsed.title), 0.3)
+    |> add_test_score(title_sim, 0.25)
     |> add_test_score(test_year_match(result.year, parsed.year), 0.1)
-    |> add_test_score(result.popularity > 10, 0.05)
+    |> add_test_score(test_popularity_score(result.popularity), 0.1)
     |> add_test_score(Map.get(result, :first_air_date) != nil, 0.05)
+    |> add_test_score(test_exact_title_match?(result.title, parsed.title), 0.15)
+    |> add_test_score(test_title_derivative_penalty(result.title, parsed.title), 1.0)
     |> min(1.0)
   end
 
@@ -358,4 +534,41 @@ defmodule Mydia.Library.MetadataMatcherTest do
 
     MapSet.intersection(chars1, chars2) |> MapSet.size()
   end
+
+  # Normalized popularity score using logarithmic scaling
+  defp test_popularity_score(nil), do: 0.0
+  defp test_popularity_score(popularity) when popularity <= 0, do: 0.0
+
+  defp test_popularity_score(popularity) do
+    min(:math.log10(popularity) / 3, 1.0)
+  end
+
+  # Check if the result title exactly matches the search query (after normalization)
+  defp test_exact_title_match?(result_title, search_title)
+       when is_binary(result_title) and is_binary(search_title) do
+    norm_result = normalize_test_title(result_title)
+    norm_search = normalize_test_title(search_title)
+    norm_result == norm_search
+  end
+
+  defp test_exact_title_match?(_result_title, _search_title), do: false
+
+  # Calculate penalty for derivative titles
+  defp test_title_derivative_penalty(result_title, search_title)
+       when is_binary(result_title) and is_binary(search_title) do
+    norm_result = String.downcase(result_title) |> String.trim()
+    norm_search = String.downcase(search_title) |> String.trim()
+
+    if norm_result != norm_search and String.contains?(norm_result, norm_search) do
+      search_len = String.length(norm_search)
+      result_len = String.length(norm_result)
+      extra_ratio = (result_len - search_len) / result_len
+
+      -extra_ratio * 0.15
+    else
+      0.0
+    end
+  end
+
+  defp test_title_derivative_penalty(_result_title, _search_title), do: 0.0
 end

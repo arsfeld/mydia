@@ -115,7 +115,7 @@ defmodule Mydia.Metadata.Provider.Relay do
 
       case HTTP.get(req, endpoint, params: params) do
         {:ok, %{status: 200, body: body}} ->
-          results = parse_search_results(body)
+          results = parse_search_results(body, media_type)
           {:ok, results}
 
         {:ok, %{status: status, body: body}} ->
@@ -231,7 +231,7 @@ defmodule Mydia.Metadata.Provider.Relay do
 
     case HTTP.get(req, endpoint, params: params) do
       {:ok, %{status: 200, body: body}} ->
-        results = parse_search_results(body)
+        results = parse_search_results(body, media_type)
         {:ok, results}
 
       {:ok, %{status: status, body: body}} ->
@@ -274,14 +274,17 @@ defmodule Mydia.Metadata.Provider.Relay do
   defp maybe_add_param(params, _key, nil), do: params
   defp maybe_add_param(params, key, value), do: params ++ [{key, value}]
 
-  defp parse_search_results(%{"results" => results}) when is_list(results) do
-    Enum.map(results, &parse_search_result/1)
+  defp parse_search_results(%{"results" => results}, media_type) when is_list(results) do
+    Enum.map(results, &parse_search_result(&1, media_type))
   end
 
-  defp parse_search_results(_), do: []
+  defp parse_search_results(_, _media_type), do: []
 
-  defp parse_search_result(result) do
-    SearchResult.from_api_response(result)
+  defp parse_search_result(result, media_type) do
+    # Pass media_type from search options to override API response's media_type
+    # This is needed because endpoint-specific searches (e.g., /tmdb/tv/search)
+    # don't include media_type in each result
+    SearchResult.from_api_response(result, media_type: media_type)
   end
 
   defp parse_metadata(data, media_type, provider_id) do
