@@ -193,12 +193,9 @@ defmodule Mydia.Indexers.CardigannAuth do
   def store_session(cardigann_definition_id, cookies, expires_at \\ nil) do
     expires_at = expires_at || DateTime.add(DateTime.utc_now(), @default_session_ttl, :second)
 
-    # Store cookies as a simple map
-    cookies_data = %{"cookies" => cookies}
-
     attrs = %{
       cardigann_definition_id: cardigann_definition_id,
-      cookies: cookies_data,
+      cookies: cookies,
       expires_at: expires_at
     }
 

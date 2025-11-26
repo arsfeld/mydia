@@ -43,29 +43,18 @@ A modern, self-hosted media management platform for tracking, organizing, and mo
 
 **Choose Radarr/Sonarr for:** Mature ecosystem, advanced custom formats, comprehensive automation, wider integrations
 
-## 📊 Quality Profile Features
+## 📊 Quality Profiles
 
-For users familiar with **Profilarr** and advanced quality management in the Radarr/Sonarr ecosystem, here's how Mydia's quality profile system compares:
+> [!NOTE]
+> Quality profile presets are still in testing. Feedback and suggestions are welcome in [GitHub Issues](https://github.com/getmydia/mydia/issues).
 
-**What Mydia Has:**
-- ✅ **Built-in Quality Profiles** – 8 predefined profiles covering SD to Remux-2160p, fully customizable via Admin UI
-- ✅ **TRaSH Guides Presets** – Browse and import 12 curated profiles based on TRaSH Guides recommendations with one click
-- ✅ **Resolution Filtering** – Define allowed qualities per profile (360p through 2160p)
-- ✅ **Size Constraints** – Min/max file size limits per profile
-- ✅ **Source Preferences** – Prefer BluRay, WEB-DL, REMUX, etc.
-- ✅ **Intelligent Scoring** – 0-100 ranking system weighing quality (40%), source (30%), size (20%), and seeder health (10%)
-- ✅ **Upgrade Rules** – Enable/disable upgrades and set upgrade-until-quality limits
-- ✅ **Per-Item Assignment** – Assign profiles to individual media items or library paths
-- ✅ **Automatic Matching** – Profiles actively drive search ranking and download decisions
+Mydia includes 8 built-in profiles (SD through Remux-2160p) plus a **preset gallery with 23 one-click imports**:
 
-**What Mydia Doesn't Have (Yet):**
-- ❌ **Advanced Custom Formats** – No support for complex multi-condition formats like Profilarr/TRaSH Guides (planned)
-- ❌ **Profile Auto-Sync** – No Git-based version control or automatic remote preset updates
-- ❌ **Negative Scoring** – Can't penalize unwanted formats, only prefer/allow certain qualities
-- ❌ **Tag-Based Filtering** – No PROPER/REPACK preference or CAM/TS blocking (basic detection exists for naming)
+- **TRaSH Guides** – Community-vetted profiles for HD/UHD Bluray, WEB, and Remux
+- **[Profilarr/Dictionarry](https://github.com/Dictionarry-Hub/database)** – Quality, Balanced, Efficient, Compact, and Remux tiers for 720p/1080p/2160p
+- **Storage & Use-Case** – Profiles optimized for storage constraints, streaming, or mobile
 
-**Implementation Difference:**
-Mydia's quality profiles are tightly integrated into the core application rather than being a separate configuration management layer. Profiles are stored in the database and used directly by the search and download system to score and rank releases automatically.
+Profiles support resolution filtering, file size limits, source/codec/audio preferences, HDR format preferences, and upgrade rules. Releases are automatically scored and ranked based on your profile settings.
 
 ## 📸 Screenshots
 

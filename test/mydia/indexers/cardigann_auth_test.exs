@@ -297,10 +297,9 @@ defmodule Mydia.Indexers.CardigannAuthTest do
 
       assert stored.cardigann_definition_id == cardigann_def.id
 
-      # Verify cookies are stored as a map with the cookies list
-      assert is_map(stored.cookies)
-      assert Map.has_key?(stored.cookies, "cookies")
-      assert stored.cookies["cookies"] == cookies
+      # Verify cookies are stored directly as a list
+      assert is_list(stored.cookies)
+      assert stored.cookies == cookies
 
       # Retrieve and verify
       assert {:ok, retrieved} = CardigannAuth.get_stored_session(cardigann_def.id)

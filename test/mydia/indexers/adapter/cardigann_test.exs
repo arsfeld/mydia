@@ -249,6 +249,9 @@ defmodule Mydia.Indexers.Adapter.CardigannTest do
 
   describe "adapter behaviour implementation" do
     test "implements all required callbacks" do
+      # Ensure module is loaded before checking exports
+      Code.ensure_loaded!(Mydia.Indexers.Adapter.Cardigann)
+
       # Verify the module implements the behaviour
       assert function_exported?(Mydia.Indexers.Adapter.Cardigann, :test_connection, 1)
       assert function_exported?(Mydia.Indexers.Adapter.Cardigann, :search, 3)
