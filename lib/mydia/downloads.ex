@@ -395,7 +395,9 @@ defmodule Mydia.Downloads do
     download_type = Keyword.get(opts, :download_type)
 
     # First, prepare the torrent/nzb input (download file if needed)
-    with {:ok, torrent_input_result} <- prepare_torrent_input(search_result.download_url) do
+    # Pass the indexer name for authentication
+    with {:ok, torrent_input_result} <-
+           prepare_torrent_input(search_result.download_url, search_result.indexer) do
       # Extract detected type from the downloaded content
       detected_type =
         case torrent_input_result do
@@ -938,7 +940,7 @@ defmodule Mydia.Downloads do
     }
   end
 
-  defp prepare_torrent_input(url) do
+  defp prepare_torrent_input(url, indexer_name) do
     cond do
       # Magnet links can be used directly
       String.starts_with?(url, "magnet:") ->
@@ -947,7 +949,7 @@ defmodule Mydia.Downloads do
       # For HTTP(S) URLs, download the torrent file content
       # This avoids redirect issues that download clients can't handle
       String.starts_with?(url, "http://") or String.starts_with?(url, "https://") ->
-        download_torrent_file(url)
+        download_torrent_file(url, indexer_name)
 
       # Unknown format, try as URL
       true ->
@@ -955,19 +957,38 @@ defmodule Mydia.Downloads do
     end
   end
 
-  defp download_torrent_file(url) do
+  defp download_torrent_file(url, indexer_name) do
     Logger.info("Downloading file from URL: #{url}")
+
+    # Get download config for the indexer (cookies and FlareSolverr setting)
+    download_config = get_indexer_download_config(indexer_name)
+
+    if download_config.flaresolverr_enabled do
+      Logger.info("Using FlareSolverr for download from: #{indexer_name}")
+      download_via_flaresolverr(url, download_config.cookies)
+    else
+      download_direct(url, download_config.cookie_header)
+    end
+  end
+
+  # Download directly with cookies
+  defp download_direct(url, cookie_header) do
+    if cookie_header != "" do
+      Logger.debug("Using auth cookies for download")
+    end
 
     # First check if the URL redirects to a magnet link
     # by manually following redirects (Req can't handle magnet: scheme)
-    case follow_to_final_url(url) do
+    case follow_to_final_url(url, cookie_header) do
       {:ok, {:magnet, magnet_url}} ->
         Logger.debug("URL redirected to magnet link")
         {:ok, {:magnet, magnet_url}}
 
       {:ok, {:http, final_url}} ->
-        # Download the actual torrent file
-        case Req.get(final_url) do
+        # Download the actual torrent file with auth cookies
+        req_opts = if cookie_header != "", do: [headers: [{"cookie", cookie_header}]], else: []
+
+        case Req.get(final_url, req_opts) do
           {:ok, %{status: 200, body: body}} when is_binary(body) ->
             Logger.info("Successfully downloaded file (#{byte_size(body)} bytes)")
 
@@ -1038,13 +1059,77 @@ defmodule Mydia.Downloads do
     end
   end
 
-  defp follow_to_final_url(url, redirects_remaining \\ 10)
-  defp follow_to_final_url(_url, 0), do: {:error, :too_many_redirects}
+  # Download via FlareSolverr for Cloudflare-protected sites
+  defp download_via_flaresolverr(url, cookies) do
+    alias Mydia.Indexers.FlareSolverr
 
-  defp follow_to_final_url(url, redirects_remaining) do
+    if not FlareSolverr.enabled?() do
+      Logger.error("FlareSolverr required but not enabled/configured")
+      {:error, {:download_failed, "FlareSolverr required but not configured"}}
+    else
+      # Pass cookies to FlareSolverr request
+      flaresolverr_opts =
+        if cookies != [] do
+          [cookies: cookies]
+        else
+          []
+        end
+
+      case FlareSolverr.get(url, flaresolverr_opts) do
+        {:ok, response} ->
+          body = response.solution.response
+
+          if is_binary(body) and byte_size(body) > 0 do
+            Logger.info("FlareSolverr downloaded file (#{byte_size(body)} bytes)")
+
+            # Check if response is a magnet link redirect
+            if String.starts_with?(body, "magnet:") do
+              {:ok, {:magnet, String.trim(body)}}
+            else
+              # Detect file type
+              is_nzb = String.contains?(body, "<?xml") and String.contains?(body, "nzb")
+
+              is_torrent =
+                String.starts_with?(body, "d8:announce") or
+                  (byte_size(body) > 11 and :binary.part(body, 0, 11) == "d8:announce")
+
+              detected_type =
+                cond do
+                  is_nzb -> :nzb
+                  is_torrent -> :torrent
+                  true -> nil
+                end
+
+              Logger.info(
+                "FlareSolverr file type detection: detected_type=#{inspect(detected_type)}"
+              )
+
+              {:ok, {:file, body, detected_type}}
+            end
+          else
+            Logger.error("FlareSolverr returned empty response for: #{url}")
+            {:error, {:download_failed, "Empty response from FlareSolverr"}}
+          end
+
+        {:error, reason} ->
+          Logger.error("FlareSolverr download failed: #{inspect(reason)}")
+          {:error, {:download_failed, "FlareSolverr error: #{inspect(reason)}"}}
+      end
+    end
+  end
+
+  defp follow_to_final_url(url, cookie_header, redirects_remaining \\ 10)
+  defp follow_to_final_url(_url, _cookie_header, 0), do: {:error, :too_many_redirects}
+
+  defp follow_to_final_url(url, cookie_header, redirects_remaining) do
+    # Build request options with cookies if available
+    req_opts =
+      [redirect: false] ++
+        if(cookie_header != "", do: [headers: [{"cookie", cookie_header}]], else: [])
+
     # Try HEAD request first - use redirect: false to get redirect responses directly
     # instead of following them, which avoids exception handling
-    case Req.head(url, redirect: false) do
+    case Req.head(url, req_opts) do
       {:ok, %{status: status} = response} when status in 301..308 ->
         # This is a redirect response
         case get_location_header(response.headers) do
@@ -1056,8 +1141,8 @@ defmodule Mydia.Downloads do
             if String.starts_with?(location, "magnet:") do
               {:ok, {:magnet, location}}
             else
-              # Follow the redirect
-              follow_to_final_url(location, redirects_remaining - 1)
+              # Follow the redirect, passing cookies along
+              follow_to_final_url(location, cookie_header, redirects_remaining - 1)
             end
         end
 
@@ -1067,7 +1152,7 @@ defmodule Mydia.Downloads do
 
       {:ok, %{status: 405}} ->
         # HEAD not allowed, try GET as fallback
-        follow_to_final_url_with_get(url, redirects_remaining)
+        follow_to_final_url_with_get(url, cookie_header, redirects_remaining)
 
       {:ok, %{status: status, body: body}} ->
         body_preview =
@@ -1092,10 +1177,14 @@ defmodule Mydia.Downloads do
     end
   end
 
-  defp follow_to_final_url_with_get(url, redirects_remaining) do
+  defp follow_to_final_url_with_get(url, cookie_header, redirects_remaining) do
     # Fallback to GET when HEAD is not allowed
-    # Use redirect: false to get redirect responses directly
-    case Req.get(url, redirect: false) do
+    # Build request options with cookies if available
+    req_opts =
+      [redirect: false] ++
+        if(cookie_header != "", do: [headers: [{"cookie", cookie_header}]], else: [])
+
+    case Req.get(url, req_opts) do
       {:ok, %{status: status} = response} when status in 301..308 ->
         # This is a redirect response
         case get_location_header(response.headers) do
@@ -1107,8 +1196,8 @@ defmodule Mydia.Downloads do
             if String.starts_with?(location, "magnet:") do
               {:ok, {:magnet, location}}
             else
-              # Follow the redirect
-              follow_to_final_url(location, redirects_remaining - 1)
+              # Follow the redirect, passing cookies along
+              follow_to_final_url(location, cookie_header, redirects_remaining - 1)
             end
         end
 
@@ -1150,4 +1239,51 @@ defmodule Mydia.Downloads do
 
   defp maybe_add_opt(opts, _key, nil), do: opts
   defp maybe_add_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # Get download configuration for an indexer by name
+  # Returns a map with cookies (formatted as header string) and flaresolverr_enabled flag
+  defp get_indexer_download_config(nil) do
+    %{cookie_header: "", cookies: [], flaresolverr_enabled: false}
+  end
+
+  defp get_indexer_download_config(indexer_name) when is_binary(indexer_name) do
+    case Mydia.Indexers.get_cardigann_download_config(indexer_name) do
+      nil ->
+        %{cookie_header: "", cookies: [], flaresolverr_enabled: false}
+
+      config ->
+        %{
+          cookie_header: format_cookies_for_header(config.cookies),
+          cookies: config.cookies,
+          flaresolverr_enabled: config.flaresolverr_enabled
+        }
+    end
+  end
+
+  # Convert cookie list to header string
+  # Handles both map format (from FlareSolverr) and string format
+  defp format_cookies_for_header([]), do: ""
+
+  defp format_cookies_for_header(cookies) when is_list(cookies) do
+    cookies
+    |> Enum.map(&format_single_cookie/1)
+    |> Enum.filter(&(&1 != nil))
+    |> Enum.join("; ")
+  end
+
+  defp format_single_cookie(%{"name" => name, "value" => value}) when is_binary(name) do
+    "#{name}=#{value}"
+  end
+
+  defp format_single_cookie(%{name: name, value: value}) when is_binary(name) do
+    "#{name}=#{value}"
+  end
+
+  defp format_single_cookie(cookie) when is_binary(cookie) do
+    # Already a string like "name=value" or "name=value; path=/"
+    # Extract just the name=value part
+    cookie |> String.split(";") |> List.first() |> String.trim()
+  end
+
+  defp format_single_cookie(_), do: nil
 end
