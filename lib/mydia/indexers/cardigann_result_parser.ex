@@ -139,7 +139,7 @@ defmodule Mydia.Indexers.CardigannResultParser do
   @spec parse_html_results(Parsed.t(), String.t(), String.t(), map()) :: parse_result()
   def parse_html_results(%Parsed{} = definition, html_body, indexer_name, template_context \\ %{}) do
     with {:ok, document} <- parse_html_document(html_body),
-         {:ok, rows} <- extract_rows(document, definition.search) do
+         {:ok, rows} <- extract_rows(document, definition.search, template_context) do
       Logger.info("[#{indexer_name}] Extracted #{length(rows)} rows from HTML")
 
       case parse_row_fields(rows, definition.search, document, template_context) do
@@ -246,10 +246,32 @@ defmodule Mydia.Indexers.CardigannResultParser do
     end
   end
 
-  defp extract_rows(document, %{rows: %{selector: selector} = row_config}) do
-    Logger.info("Extracting rows with selector: #{inspect(selector)}")
-    rows = Floki.find(document, selector)
+  defp extract_rows(document, %{rows: %{selector: selector} = row_config}, template_context) do
+    # Render Go templates in the row selector
+    rendered_selector = render_selector_template(selector, template_context)
+    Logger.info("Extracting rows with selector: #{inspect(rendered_selector)}")
+    # Use enhanced find that supports :contains() pseudo-selector
+    rows = floki_find_with_contains(document, rendered_selector)
     Logger.info("Found #{length(rows)} rows before filtering")
+
+    # Debug: if no rows found, log some HTML structure info
+    if rows == [] do
+      # Try to find any tr elements to understand the structure
+      all_trs = Floki.find(document, "tr")
+      all_tables = Floki.find(document, "table")
+
+      Logger.info(
+        "Debug: Found #{length(all_trs)} tr elements and #{length(all_tables)} tables in document"
+      )
+
+      # Check for common row patterns
+      torrent_links = Floki.find(document, "a[href*=\"torrent\"]")
+      Logger.info("Debug: Found #{length(torrent_links)} links containing 'torrent' in href")
+
+      # Log first 500 chars of HTML to understand structure
+      html_preview = document |> Floki.raw_html() |> String.slice(0, 1000)
+      Logger.info("Debug: HTML preview: #{html_preview}")
+    end
 
     # Apply 'after' filter to skip header rows if configured
     rows_after_skip =
@@ -265,8 +287,80 @@ defmodule Mydia.Indexers.CardigannResultParser do
     {:ok, rows_after_skip}
   end
 
-  defp extract_rows(_document, _search_config) do
+  defp extract_rows(_document, _search_config, _template_context) do
     {:error, Error.search_failed("No row selector configured")}
+  end
+
+  # Renders Go templates in a selector string
+  defp render_selector_template(selector, template_context)
+       when is_binary(selector) and map_size(template_context) > 0 do
+    if String.contains?(selector, "{{") do
+      case CardigannTemplate.render(selector, template_context, url_encode: false) do
+        {:ok, rendered} -> rendered
+        {:error, _} -> selector
+      end
+    else
+      selector
+    end
+  end
+
+  defp render_selector_template(selector, _template_context), do: selector
+
+  # Enhanced Floki.find that supports :contains() pseudo-selector
+  # Floki doesn't support :contains(), so we handle it manually
+  defp floki_find_with_contains(document, selector) do
+    # Handle comma-separated selectors (OR)
+    if String.contains?(selector, ",") do
+      selector
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.flat_map(&floki_find_with_contains(document, &1))
+      |> Enum.uniq()
+    else
+      floki_find_single_selector(document, selector)
+    end
+  end
+
+  defp floki_find_single_selector(document, selector) do
+    # Check if selector contains :contains()
+    case Regex.run(~r/:contains\(['"]([^'"]+)['"]\)/, selector) do
+      [full_match, text_to_find] ->
+        # Split selector at :contains() and process
+        [before_contains | rest] = String.split(selector, full_match, parts: 2)
+        after_contains = Enum.join(rest, "")
+
+        # Find elements matching the part before :contains
+        before_selector = String.trim(before_contains)
+
+        elements =
+          if before_selector == "" do
+            # :contains at the start - search all elements
+            [document]
+          else
+            Floki.find(document, before_selector)
+          end
+
+        # Filter to only elements containing the text
+        matching_elements =
+          Enum.filter(elements, fn el ->
+            text = Floki.text(el)
+            String.contains?(text, text_to_find)
+          end)
+
+        # If there's more selector after :contains, apply it
+        if String.trim(after_contains) == "" do
+          matching_elements
+        else
+          # Apply the rest of the selector within matching elements
+          Enum.flat_map(matching_elements, fn el ->
+            floki_find_with_contains(el, String.trim(after_contains))
+          end)
+        end
+
+      nil ->
+        # No :contains(), use normal Floki.find
+        Floki.find(document, selector)
+    end
   end
 
   defp parse_row_fields(rows, %{fields: fields}, _document, template_context) do
@@ -460,17 +554,11 @@ defmodule Mydia.Indexers.CardigannResultParser do
   end
 
   defp apply_single_filter(value, %{name: "re_replace", args: [pattern, replacement]}) do
-    case Regex.compile(pattern) do
-      {:ok, regex} -> {:ok, Regex.replace(regex, value, replacement)}
-      {:error, _} -> {:error, :invalid_regex}
-    end
+    apply_re_replace(value, pattern, replacement)
   end
 
   defp apply_single_filter(value, %{"name" => "re_replace", "args" => [pattern, replacement]}) do
-    case Regex.compile(pattern) do
-      {:ok, regex} -> {:ok, Regex.replace(regex, value, replacement)}
-      {:error, _} -> {:error, :invalid_regex}
-    end
+    apply_re_replace(value, pattern, replacement)
   end
 
   defp apply_single_filter(value, %{name: "append", args: [suffix]}) do
@@ -501,6 +589,45 @@ defmodule Mydia.Indexers.CardigannResultParser do
     # Unknown filter, just pass through
     {:ok, value}
   end
+
+  # Applies regex replacement with Go-to-PCRE pattern conversion
+  defp apply_re_replace(value, pattern, replacement) do
+    # Convert Go-specific patterns to PCRE equivalents
+    pcre_pattern = convert_go_regex_to_pcre(pattern)
+    # Convert Go-style backreferences ($1, $2) to Elixir-style (\1, \2)
+    elixir_replacement = convert_go_backrefs_to_elixir(replacement)
+
+    case Regex.compile(pcre_pattern, [:unicode]) do
+      {:ok, regex} ->
+        {:ok, Regex.replace(regex, value, elixir_replacement)}
+
+      {:error, reason} ->
+        # Log and skip filter instead of failing - allows extraction to continue
+        Logger.warning(
+          "Skipping invalid regex filter: #{inspect(reason)} for pattern: #{inspect(pattern)}"
+        )
+
+        {:ok, value}
+    end
+  end
+
+  # Converts Go regex patterns to PCRE equivalents
+  defp convert_go_regex_to_pcre(pattern) when is_binary(pattern) do
+    # Go uses \p{IsFoo} for Unicode properties, PCRE uses \p{Foo}
+    # Examples: \p{IsCyrillic} -> \p{Cyrillic}, \p{IsLatin} -> \p{Latin}
+    Regex.replace(~r/\\p\{Is(\w+)\}/, pattern, "\\p{\\1}")
+  end
+
+  defp convert_go_regex_to_pcre(pattern), do: pattern
+
+  # Converts Go-style backreferences ($1, $2, etc.) to Elixir-style (\1, \2, etc.)
+  defp convert_go_backrefs_to_elixir(replacement) when is_binary(replacement) do
+    # Replace $1, $2, ... $9 with \1, \2, ... \9
+    # Also handle $0 for full match
+    Regex.replace(~r/\$(\d)/, replacement, "\\\\\\1")
+  end
+
+  defp convert_go_backrefs_to_elixir(replacement), do: replacement
 
   # JSON Parsing Functions
 
@@ -658,7 +785,10 @@ defmodule Mydia.Indexers.CardigannResultParser do
   end
 
   defp get_required_field(row, field) do
-    case Map.get(row, field) do
+    # Check both string and atom keys since parser may use either
+    value = Map.get(row, field) || Map.get(row, String.to_atom(field))
+
+    case value do
       nil -> {:error, :missing_field}
       "" -> {:error, :empty_field}
       value -> {:ok, value}
@@ -666,7 +796,8 @@ defmodule Mydia.Indexers.CardigannResultParser do
   end
 
   defp get_field(row, field, default \\ nil) do
-    Map.get(row, field, default)
+    # Check both string and atom keys since parser may use either
+    Map.get(row, field) || Map.get(row, String.to_atom(field), default)
   end
 
   @doc """
