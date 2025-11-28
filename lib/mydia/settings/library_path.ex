@@ -8,7 +8,7 @@ defmodule Mydia.Settings.LibraryPath do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @path_types [:movies, :series, :mixed]
+  @path_types [:movies, :series, :mixed, :music, :books, :adult]
   @scan_statuses [:success, :failed, :in_progress]
 
   schema "library_paths" do

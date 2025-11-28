@@ -108,7 +108,7 @@ defmodule Mydia.Config.Schema do
 
     embeds_many :library_paths, LibraryPath, on_replace: :delete, primary_key: false do
       field :path, :string
-      field :type, Ecto.Enum, values: [:movies, :series, :mixed]
+      field :type, Ecto.Enum, values: [:movies, :series, :mixed, :music, :books, :adult]
       field :monitored, :boolean, default: true
       field :scan_interval, :integer, default: 3600
       field :quality_profile_id, :integer
@@ -305,7 +305,7 @@ defmodule Mydia.Config.Schema do
       :quality_profile_id
     ])
     |> validate_required([:path, :type])
-    |> validate_inclusion(:type, [:movies, :series, :mixed])
+    |> validate_inclusion(:type, [:movies, :series, :mixed, :music, :books, :adult])
     |> validate_number(:scan_interval, greater_than: 0)
     |> validate_number(:quality_profile_id, greater_than: 0)
   end

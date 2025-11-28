@@ -271,6 +271,69 @@ defmodule Mydia.SettingsTest do
     end
   end
 
+  describe "specialized library types" do
+    test "can create library path with :music type" do
+      {:ok, library_path} =
+        Settings.create_library_path(%{
+          path: "/media/music_#{System.unique_integer([:positive])}",
+          type: :music,
+          monitored: true
+        })
+
+      assert library_path.type == :music
+    end
+
+    test "can create library path with :books type" do
+      {:ok, library_path} =
+        Settings.create_library_path(%{
+          path: "/media/books_#{System.unique_integer([:positive])}",
+          type: :books,
+          monitored: true
+        })
+
+      assert library_path.type == :books
+    end
+
+    test "can create library path with :adult type" do
+      {:ok, library_path} =
+        Settings.create_library_path(%{
+          path: "/media/adult_#{System.unique_integer([:positive])}",
+          type: :adult,
+          monitored: true
+        })
+
+      assert library_path.type == :adult
+    end
+
+    test "rejects invalid library type" do
+      {:error, changeset} =
+        Settings.create_library_path(%{
+          path: "/media/invalid_#{System.unique_integer([:positive])}",
+          type: :invalid_type,
+          monitored: true
+        })
+
+      assert changeset.errors[:type] != nil
+    end
+
+    test "all valid library types are accepted" do
+      valid_types = [:movies, :series, :mixed, :music, :books, :adult]
+
+      Enum.each(valid_types, fn type ->
+        unique_path = "/media/test_#{type}_#{System.unique_integer([:positive])}"
+
+        {:ok, library_path} =
+          Settings.create_library_path(%{
+            path: unique_path,
+            type: type,
+            monitored: true
+          })
+
+        assert library_path.type == type
+      end)
+    end
+  end
+
   describe "runtime download clients" do
     setup do
       # Set up runtime config with download clients
