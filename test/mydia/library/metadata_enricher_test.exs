@@ -1,7 +1,57 @@
 defmodule Mydia.Library.MetadataEnricherTest do
   use Mydia.DataCase, async: true
 
+  alias Mydia.Library.MetadataEnricher
   alias Mydia.{Library, Settings}
+
+  describe "enrich/2 with invalid input" do
+    test "returns error for match result missing provider_id" do
+      invalid_match = %{
+        provider_type: :tmdb,
+        title: "Test Movie"
+      }
+
+      assert {:error, {:invalid_match_result, message}} = MetadataEnricher.enrich(invalid_match)
+      assert message =~ "missing required fields"
+    end
+
+    test "returns error for match result missing provider_type" do
+      invalid_match = %{
+        provider_id: "12345",
+        title: "Test Movie"
+      }
+
+      assert {:error, {:invalid_match_result, message}} = MetadataEnricher.enrich(invalid_match)
+      assert message =~ "missing required fields"
+    end
+
+    test "returns error for match result with nil provider_id" do
+      invalid_match = %{
+        provider_id: nil,
+        provider_type: :tmdb,
+        title: "Test Movie"
+      }
+
+      assert {:error, {:invalid_match_result, message}} = MetadataEnricher.enrich(invalid_match)
+      assert message =~ "missing required fields"
+    end
+
+    test "returns error for match result with nil provider_type" do
+      invalid_match = %{
+        provider_id: "12345",
+        provider_type: nil,
+        title: "Test Movie"
+      }
+
+      assert {:error, {:invalid_match_result, message}} = MetadataEnricher.enrich(invalid_match)
+      assert message =~ "missing required fields"
+    end
+
+    test "returns error for completely empty map" do
+      assert {:error, {:invalid_match_result, message}} = MetadataEnricher.enrich(%{})
+      assert message =~ "missing required fields"
+    end
+  end
 
   describe "library type validation" do
     setup do

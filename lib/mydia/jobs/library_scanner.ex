@@ -15,7 +15,7 @@ defmodule Mydia.Jobs.LibraryScanner do
 
   require Logger
   alias Mydia.{Library, Settings, Repo, Metadata}
-  alias Mydia.Library.{MetadataMatcher, MetadataEnricher, FileAnalyzer}
+  alias Mydia.Library.{MetadataMatcher, MetadataEnricher, FileAnalyzer, MusicScanner, BookScanner}
   alias Mydia.Library.FileParser.V2, as: FileParser
 
   @impl Oban.Worker
@@ -131,15 +131,20 @@ defmodule Mydia.Jobs.LibraryScanner do
         })
     end
 
-    # Perform the file system scan
+    # Perform the file system scan with appropriate extensions for library type
     progress_callback = fn count ->
       Logger.debug("Scan progress", library_path_id: library_path.id, files_scanned: count)
     end
 
+    extensions = Library.Scanner.extensions_for_library_type(library_path.type)
+
     # Perform scan and handle errors gracefully
     with {:ok, scan_result} <-
-           Library.Scanner.scan(library_path.path, progress_callback: progress_callback) do
-      process_scan_result(library_path, scan_result)
+           Library.Scanner.scan(library_path.path,
+             progress_callback: progress_callback,
+             video_extensions: extensions
+           ) do
+      process_scan_result_by_type(library_path, scan_result)
     else
       {:error, :not_found} ->
         handle_scan_error(library_path, "Library path does not exist: #{library_path.path}")
@@ -183,6 +188,105 @@ defmodule Mydia.Jobs.LibraryScanner do
     )
 
     {:error, error_message}
+  end
+
+  # Dispatch to appropriate scanner based on library type
+  defp process_scan_result_by_type(library_path, scan_result) do
+    case library_path.type do
+      :music ->
+        process_music_scan_result(library_path, scan_result)
+
+      :books ->
+        process_books_scan_result(library_path, scan_result)
+
+      # Video-based library types use the standard video processing
+      type when type in [:movies, :series, :mixed, :adult] ->
+        process_scan_result(library_path, scan_result)
+
+      # Default to video processing for unknown types
+      _ ->
+        process_scan_result(library_path, scan_result)
+    end
+  end
+
+  defp process_music_scan_result(library_path, scan_result) do
+    Logger.info("Processing music library scan",
+      library_path_id: library_path.id,
+      files_found: length(scan_result.files)
+    )
+
+    result = MusicScanner.process_scan_result(library_path, scan_result)
+
+    # Update library path with success status
+    if updatable_library_path?(library_path) do
+      {:ok, _} =
+        Settings.update_library_path(library_path, %{
+          last_scan_at: DateTime.utc_now(),
+          last_scan_status: :success,
+          last_scan_error: nil
+        })
+    end
+
+    # Broadcast scan completed
+    Phoenix.PubSub.broadcast(
+      Mydia.PubSub,
+      "library_scanner",
+      {:library_scan_completed,
+       %{
+         library_path_id: library_path.id,
+         type: library_path.type,
+         new_files: result.new_files,
+         modified_files: result.modified_files,
+         deleted_files: result.deleted_files
+       }}
+    )
+
+    {:ok, result}
+  rescue
+    error ->
+      error_message = Exception.format(:error, error, __STACKTRACE__)
+      Logger.error("Music library scan raised exception", error: error_message)
+      handle_scan_error(library_path, error_message)
+  end
+
+  defp process_books_scan_result(library_path, scan_result) do
+    Logger.info("Processing books library scan",
+      library_path_id: library_path.id,
+      files_found: length(scan_result.files)
+    )
+
+    result = BookScanner.process_scan_result(library_path, scan_result)
+
+    # Update library path with success status
+    if updatable_library_path?(library_path) do
+      {:ok, _} =
+        Settings.update_library_path(library_path, %{
+          last_scan_at: DateTime.utc_now(),
+          last_scan_status: :success,
+          last_scan_error: nil
+        })
+    end
+
+    # Broadcast scan completed
+    Phoenix.PubSub.broadcast(
+      Mydia.PubSub,
+      "library_scanner",
+      {:library_scan_completed,
+       %{
+         library_path_id: library_path.id,
+         type: library_path.type,
+         new_files: result.new_files,
+         modified_files: result.modified_files,
+         deleted_files: result.deleted_files
+       }}
+    )
+
+    {:ok, result}
+  rescue
+    error ->
+      error_message = Exception.format(:error, error, __STACKTRACE__)
+      Logger.error("Books library scan raised exception", error: error_message)
+      handle_scan_error(library_path, error_message)
   end
 
   defp process_scan_result(library_path, scan_result) do
