@@ -22,7 +22,110 @@ The multi-arch image `ghcr.io/getmydia/mydia:latest` automatically pulls the cor
 
 ## Docker Compose (Recommended)
 
-See the [Quick Start](quick-start.md) guide for a complete Docker Compose setup.
+See the [Quick Start](quick-start.md) guide for a minimal Docker Compose setup.
+
+## Complete Stack Example
+
+A production-ready setup with Mydia, Transmission (torrent client), and Prowlarr (indexer manager):
+
+```yaml
+services:
+  # =============================================================================
+  # MYDIA - Media Management
+  # =============================================================================
+  mydia:
+    image: ghcr.io/getmydia/mydia:latest
+    container_name: mydia
+    environment:
+      # --- Required Secrets (generate with: openssl rand -base64 48) ---
+      - SECRET_KEY_BASE=your-64-character-secret-key-base-here
+      - GUARDIAN_SECRET_KEY=your-64-character-guardian-secret-here
+
+      # --- Container Settings ---
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+
+      # --- Server Settings ---
+      - PHX_HOST=mydia.local
+      - PORT=4000
+      - URL_SCHEME=http
+
+      # --- Media Library Paths ---
+      - MOVIES_PATH=/media/library/movies
+      - TV_PATH=/media/library/tv
+
+      # --- Transmission Download Client ---
+      - DOWNLOAD_CLIENT_1_NAME=Transmission
+      - DOWNLOAD_CLIENT_1_TYPE=transmission
+      - DOWNLOAD_CLIENT_1_ENABLED=true
+      - DOWNLOAD_CLIENT_1_HOST=transmission
+      - DOWNLOAD_CLIENT_1_PORT=9091
+      - DOWNLOAD_CLIENT_1_USERNAME=admin
+      - DOWNLOAD_CLIENT_1_PASSWORD=transmission
+      - DOWNLOAD_CLIENT_1_CATEGORY=mydia
+      - DOWNLOAD_CLIENT_1_DOWNLOAD_DIRECTORY=/media/downloads
+
+      # --- Prowlarr Indexer ---
+      - INDEXER_1_NAME=Prowlarr
+      - INDEXER_1_TYPE=prowlarr
+      - INDEXER_1_ENABLED=true
+      - INDEXER_1_BASE_URL=http://prowlarr:9696
+      - INDEXER_1_API_KEY=your-prowlarr-api-key-here
+    volumes:
+      - ./config/mydia:/config
+      - /path/to/media:/media
+    ports:
+      - "4000:4000"
+    depends_on:
+      - transmission
+      - prowlarr
+    restart: unless-stopped
+
+  # =============================================================================
+  # TRANSMISSION - Torrent Client
+  # =============================================================================
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - USER=admin
+      - PASS=transmission
+    volumes:
+      - ./config/transmission:/config
+      - /path/to/media/downloads:/media/downloads
+    ports:
+      - "9091:9091"
+      - "51413:51413"
+      - "51413:51413/udp"
+    restart: unless-stopped
+
+  # =============================================================================
+  # PROWLARR - Indexer Manager
+  # =============================================================================
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped
+```
+
+!!! tip "Getting Your Prowlarr API Key"
+    1. Start the stack: `docker compose up -d`
+    2. Access Prowlarr at `http://localhost:9696`
+    3. Go to **Settings → General** and copy the **API Key**
+    4. Update `INDEXER_1_API_KEY` in your compose file
+    5. Restart Mydia: `docker compose restart mydia`
 
 ## Docker CLI
 
