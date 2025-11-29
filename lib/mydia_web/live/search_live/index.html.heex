@@ -1,300 +1,396 @@
 <Layouts.app {assigns}>
   <div class="flex flex-col h-full">
     <%!-- Header --%>
-    <div class="mb-4 md:mb-6">
-      <h1 class="text-3xl font-bold">{@page_title}</h1>
-      <p class="text-base-content/70 mt-1">
-        Search for movies and TV shows across your configured indexers
-      </p>
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">{@page_title}</h1>
+        <p class="text-base-content/70 mt-1">
+          Search for movies and TV shows across your configured indexers
+        </p>
+      </div>
     </div>
 
-    <%!-- Search Bar --%>
-    <form phx-submit="search" id="indexer-search-form" class="mb-4 md:mb-6">
-      <div class="flex w-full">
-        <div class="flex-1">
-          <.input
-            type="text"
-            name="search"
-            value={@search_query}
-            placeholder="Search for movies, TV shows, or specific releases..."
-            class="input input-bordered w-full rounded-r-none"
-          />
-        </div>
-        <button type="submit" class="btn btn-primary rounded-l-none" disabled={@searching}>
-          <%= if @searching do %>
-            <span class="loading loading-spinner loading-sm"></span> Searching...
-          <% else %>
-            Search
-          <% end %>
-        </button>
+    <%!-- No indexers warning --%>
+    <%= if @available_indexers == [] do %>
+      <div role="alert" class="alert alert-info mb-6">
+        <.icon name="hero-information-circle" class="w-5 h-5" />
+        <span>
+          No indexers configured.
+          <a href="/admin/config" class="link link-primary font-semibold">Configure indexers</a>
+          to enable searching.
+        </span>
       </div>
-      <%!-- Quick help text --%>
-      <%= if @search_query == "" && !@searching do %>
-        <div class="text-sm text-base-content/60 mt-2">
-          <.icon name="hero-information-circle" class="w-4 h-4 inline" />
-          Try searching for "Breaking Bad", "The Matrix", or specific release names
-        </div>
-      <% end %>
-    </form>
+    <% end %>
 
-    <%!-- Filters and Sort --%>
-    <%= if @search_query != "" || @searching do %>
-      <div class="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6">
-        <%!-- Filters --%>
-        <div class="card bg-base-100 shadow flex-1">
-          <div class="card-body p-4">
-            <h3 class="font-semibold mb-3 flex items-center gap-2">
-              <.icon name="hero-funnel" class="w-5 h-5" /> Filters
-            </h3>
-            <form phx-change="filter" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              <%!-- Quality filter --%>
-              <div class="form-control">
-                <label class="label label-text text-xs">Quality</label>
-                <select name="quality" class="select select-bordered select-sm">
-                  <option value="" selected={is_nil(@quality_filter)}>All</option>
-                  <option value="720p" selected={@quality_filter == "720p"}>720p</option>
-                  <option value="1080p" selected={@quality_filter == "1080p"}>1080p</option>
-                  <option value="2160p" selected={@quality_filter in ["2160p", "4k"]}>
-                    4K (2160p)
-                  </option>
-                </select>
-              </div>
-              <%!-- Min seeders filter --%>
-              <div class="form-control">
-                <label class="label label-text text-xs">Min Seeders</label>
-                <input
-                  type="number"
-                  name="min_seeders"
-                  value={@min_seeders}
-                  min="0"
-                  class="input input-bordered input-sm"
-                  placeholder="0"
-                />
-              </div>
-              <%!-- Min size filter --%>
-              <div class="form-control">
-                <label class="label label-text text-xs">Min Size (GB)</label>
-                <input
-                  type="number"
-                  name="min_size"
-                  value={@min_size_gb}
-                  min="0"
-                  step="0.1"
-                  class="input input-bordered input-sm"
-                  placeholder="Any"
-                />
-              </div>
-              <%!-- Max size filter --%>
-              <div class="form-control">
-                <label class="label label-text text-xs">Max Size (GB)</label>
-                <input
-                  type="number"
-                  name="max_size"
-                  value={@max_size_gb}
-                  min="0"
-                  step="0.1"
-                  class="input input-bordered input-sm"
-                  placeholder="Any"
-                />
-              </div>
-            </form>
+    <%!-- Search and Indexer Selection --%>
+    <%= if @available_indexers != [] do %>
+      <div class="flex flex-col lg:flex-row gap-4 mb-6">
+        <%!-- Search input --%>
+        <form phx-submit="search" id="indexer-search-form" class="flex-1">
+          <div class="join w-full">
+            <input
+              type="text"
+              name="search"
+              value={@search_query}
+              placeholder="Search for movies, TV shows, or specific releases..."
+              class="input input-bordered join-item flex-1"
+            />
+            <button
+              type="submit"
+              class="btn btn-primary join-item"
+              disabled={@searching || MapSet.size(@selected_indexer_ids) == 0}
+            >
+              <%= if @searching do %>
+                <span class="loading loading-spinner loading-sm"></span>
+              <% else %>
+                <.icon name="hero-magnifying-glass" class="w-5 h-5" />
+              <% end %>
+              <span class="hidden sm:inline">Search</span>
+            </button>
           </div>
-        </div>
-        <%!-- Sort options --%>
-        <div class="card bg-base-100 shadow lg:w-64">
-          <div class="card-body p-4">
-            <h3 class="font-semibold mb-3 flex items-center gap-2">
-              <.icon name="hero-arrows-up-down" class="w-5 h-5" /> Sort By
-            </h3>
-            <form phx-change="sort">
-              <select name="sort_by" class="select select-bordered select-sm w-full">
-                <option value="quality" selected={@sort_by == :quality}>
-                  Quality (Best First)
-                </option>
-                <option value="seeders" selected={@sort_by == :seeders}>
-                  Seeders (Most First)
-                </option>
-                <option value="size" selected={@sort_by == :size}>Size (Largest First)</option>
-                <option value="date" selected={@sort_by == :date}>Date (Newest First)</option>
-              </select>
-            </form>
+        </form>
+
+        <%!-- Indexer dropdown --%>
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-outline gap-2">
+            <.icon name="hero-server-stack" class="w-5 h-5" /> Indexers
+            <span class="badge badge-sm badge-primary">
+              {MapSet.size(@selected_indexer_ids)}/{length(@available_indexers)}
+            </span>
+          </div>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[1] card card-compact w-72 p-2 shadow-lg bg-base-100 border border-base-300"
+          >
+            <div class="card-body">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-semibold text-sm">Select Indexers</span>
+                <div class="flex gap-1">
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-ghost"
+                    phx-click="select_all_indexers"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-ghost"
+                    phx-click="deselect_all_indexers"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              <div class="space-y-1 max-h-64 overflow-y-auto">
+                <%= for indexer <- @available_indexers do %>
+                  <label class="flex items-center gap-2 p-2 rounded hover:bg-base-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-primary checkbox-sm"
+                      checked={MapSet.member?(@selected_indexer_ids, indexer.id)}
+                      phx-click="toggle_indexer"
+                      phx-value-id={indexer.id}
+                    />
+                    <span class="flex-1 text-sm">{indexer.name}</span>
+                    <span class={["badge badge-xs", indexer_type_badge_class(indexer.type)]}>
+                      {indexer_type_label(indexer.type)}
+                    </span>
+                  </label>
+                <% end %>
+              </div>
+              <%= if MapSet.size(@selected_indexer_ids) == 0 do %>
+                <div role="alert" class="alert alert-warning py-2 mt-2">
+                  <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
+                  <span class="text-xs">Select at least one indexer</span>
+                </div>
+              <% end %>
+            </div>
           </div>
         </div>
       </div>
     <% end %>
+
+    <%!-- Filters and Sort (shown when searching or have query) --%>
+    <%= if @search_query != "" || @searching do %>
+      <div class="flex flex-col md:flex-row gap-4 mb-6">
+        <%!-- Filters --%>
+        <.form for={%{}} phx-change="filter" id="search-filter-form" class="join flex-1">
+          <select name="library_type" class="select select-bordered join-item">
+            <%= for {type, label} <- @library_type_options do %>
+              <option value={type} selected={@library_type_filter == type}>{label}</option>
+            <% end %>
+          </select>
+          <select name="quality" class="select select-bordered join-item">
+            <option value="" selected={is_nil(@quality_filter)}>All Quality</option>
+            <option value="720p" selected={@quality_filter == "720p"}>720p</option>
+            <option value="1080p" selected={@quality_filter == "1080p"}>1080p</option>
+            <option value="2160p" selected={@quality_filter in ["2160p", "4k"]}>4K</option>
+          </select>
+          <input
+            type="number"
+            name="min_seeders"
+            value={@min_seeders}
+            min="0"
+            placeholder="Min seeders"
+            class="input input-bordered join-item w-32"
+          />
+          <input
+            type="number"
+            name="min_size"
+            value={@min_size_gb}
+            min="0"
+            step="0.1"
+            placeholder="Min GB"
+            class="input input-bordered join-item w-28"
+          />
+          <input
+            type="number"
+            name="max_size"
+            value={@max_size_gb}
+            min="0"
+            step="0.1"
+            placeholder="Max GB"
+            class="input input-bordered join-item w-28"
+          />
+        </.form>
+
+        <%!-- Sort --%>
+        <.form for={%{}} phx-change="sort" id="search-sort-form">
+          <select name="sort_by" class="select select-bordered">
+            <option value="quality" selected={@sort_by == :quality}>Quality (Best)</option>
+            <option value="seeders" selected={@sort_by == :seeders}>Seeders (Most)</option>
+            <option value="size" selected={@sort_by == :size}>Size (Largest)</option>
+            <option value="date" selected={@sort_by == :date}>Date (Newest)</option>
+          </select>
+        </.form>
+      </div>
+    <% end %>
+
     <%!-- Loading State --%>
     <%= if @searching do %>
-      <div class="flex flex-col items-center justify-center py-16">
-        <span class="loading loading-spinner loading-lg text-primary mb-4"></span>
-        <h3 class="text-xl font-semibold text-base-content/70 mb-2">
-          Searching across indexers...
-        </h3>
-        <p class="text-base-content/50">
-          This may take a few seconds
-        </p>
-      </div>
-    <% end %>
-    <%!-- Empty State (no search yet) --%>
-    <%= if @search_query == "" && !@searching do %>
-      <div class="flex flex-col items-center justify-center py-16 text-center">
-        <.icon name="hero-magnifying-glass" class="w-24 h-24 text-base-content/20 mb-6" />
-        <h3 class="text-2xl font-semibold text-base-content/70 mb-3">
-          Search for Media
-        </h3>
-        <p class="text-base-content/50 max-w-md">
-          Enter a movie or TV show name in the search bar above to find available releases from your configured indexers
-        </p>
-      </div>
-    <% end %>
-    <%!-- Empty State (no results) --%>
-    <%= if @results_empty? && @search_query != "" && !@searching do %>
-      <div class="flex flex-col items-center justify-center py-16 text-center">
-        <.icon name="hero-exclamation-circle" class="w-20 h-20 text-base-content/20 mb-6" />
-        <h3 class="text-2xl font-semibold text-base-content/70 mb-3">
-          No Results Found
-        </h3>
-        <p class="text-base-content/50 max-w-md mb-4">
-          We couldn't find any releases matching "<span class="font-semibold">{@search_query}</span>"
-        </p>
-        <div class="text-sm text-base-content/60">
-          <p>Try:</p>
-          <ul class="list-disc list-inside mt-2 space-y-1">
-            <li>Using different keywords or spelling</li>
-            <li>Removing or adjusting filters</li>
-            <li>Checking that your indexers are configured and enabled</li>
-          </ul>
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body flex flex-col items-center justify-center py-16">
+          <span class="loading loading-spinner loading-lg text-primary mb-4"></span>
+          <h3 class="text-xl font-semibold text-base-content/70 mb-2">
+            Searching indexers...
+          </h3>
+          <p class="text-base-content/50">This may take a few seconds</p>
         </div>
       </div>
     <% end %>
-    <%!-- Results Table --%>
-    <%= if @search_query != "" && !@searching && !@results_empty? do %>
-      <div class="overflow-x-auto">
-        <table class="table table-zebra w-full bg-base-100 shadow-lg">
-          <thead>
-            <tr class="bg-base-300">
-              <th class="w-2/5">Release Title</th>
-              <th class="w-1/5">Quality & Size</th>
-              <th class="w-1/6 hidden md:table-cell">Health</th>
-              <th class="w-1/6 hidden lg:table-cell">Source</th>
-              <th class="w-32">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="search-results" phx-update="stream">
-            <tr
-              :for={{id, result} <- @streams.search_results}
-              id={id}
-              class="hover"
-            >
-              <%!-- Title Column --%>
-              <td
-                class="cursor-pointer"
-                phx-click="show_detail"
-                phx-value-download_url={result.download_url}
-              >
-                <div class="flex flex-col">
-                  <div
-                    class="font-semibold text-sm line-clamp-2 hover:text-primary"
-                    title={result.title}
-                  >
-                    {result.title}
-                  </div>
-                  <%!-- Mobile-only compact info --%>
-                  <div class="flex gap-2 mt-2 md:hidden flex-wrap">
-                    <%= if result.download_protocol == :nzb do %>
-                      <span class="badge badge-info badge-sm">Usenet</span>
-                    <% else %>
-                      <span class="badge badge-ghost badge-sm">
-                        <.icon name="hero-arrow-up" class="w-3 h-3 mr-1" /> {result.seeders}
-                        <span class="mx-1 text-base-content/30">/</span>
-                        <.icon name="hero-arrow-down" class="w-3 h-3 mr-1" /> {result.leechers}
-                      </span>
-                    <% end %>
-                    <span class="badge badge-outline badge-sm">{result.indexer}</span>
-                  </div>
-                </div>
-              </td>
-              <%!-- Quality & Size Column --%>
-              <td class="align-top">
-                <div class="flex flex-wrap gap-1 mb-2">
-                  <%= for badge <- get_quality_badges(result) do %>
-                    <span class={"badge badge-sm #{badge.color}"}>
-                      {badge.text}
-                    </span>
-                  <% end %>
-                </div>
-                <div class="text-xs font-mono text-base-content/70">
-                  {format_size(result)}
-                </div>
-              </td>
-              <%!-- Health Column (Seeders/Peers with indicator) - only for torrents --%>
-              <td class="hidden md:table-cell">
-                <%= if result.download_protocol == :nzb do %>
-                  <span class="text-base-content/50 text-sm">N/A</span>
-                <% else %>
-                  <div class="flex items-center gap-3">
-                    <%!-- Health indicator --%>
-                    <div
-                      class={"radial-progress #{health_color(health_score(result))}"}
-                      style={"--value:#{trunc(health_score(result) * 100)}; --size:3rem; --thickness: 3px;"}
-                      role="progressbar"
-                    >
-                      <span class="text-xs font-semibold">
-                        {trunc(health_score(result) * 100)}%
-                      </span>
-                    </div>
-                    <%!-- Seeders/Peers --%>
-                    <div class="flex flex-col gap-0.5">
-                      <div class="flex items-center gap-1.5">
-                        <.icon name="hero-arrow-up" class="w-3.5 h-3.5 text-success" />
-                        <span class="text-sm font-semibold text-success">{result.seeders}</span>
-                      </div>
-                      <div class="flex items-center gap-1.5">
-                        <.icon name="hero-arrow-down" class="w-3.5 h-3.5 text-base-content/50" />
-                        <span class="text-sm text-base-content/70">{result.leechers}</span>
-                      </div>
-                    </div>
-                  </div>
-                <% end %>
-              </td>
-              <%!-- Source Column (Indexer + Date) --%>
-              <td class="hidden lg:table-cell">
-                <div class="flex flex-col gap-1">
-                  <span class="badge badge-outline badge-sm">{result.indexer}</span>
-                  <span class="text-xs text-base-content/60">
-                    {format_date(result.published_at)}
-                  </span>
-                </div>
-              </td>
-              <%!-- Actions Column --%>
-              <td>
-                <%= if @current_user && @current_user.role == "guest" do %>
-                  <%!-- Guest users cannot download directly from search --%>
-                  <div class="tooltip" data-tip="Please use the request system">
-                    <button class="btn btn-sm btn-ghost" disabled>
-                      <.icon name="hero-lock-closed" class="w-4 h-4" />
-                      <span class="hidden xl:inline">Restricted</span>
-                    </button>
-                  </div>
-                <% else %>
-                  <%!-- Admin users can download --%>
-                  <button
-                    class="btn btn-sm btn-primary"
-                    phx-click="add_to_library"
-                    phx-value-title={result.title}
-                    phx-value-download_url={result.download_url}
-                    phx-value-download="true"
-                    title="Add to library and download"
-                  >
-                    <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
-                    <span class="hidden xl:inline">Download</span>
-                  </button>
-                <% end %>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+
+    <%!-- Empty State (no search yet) --%>
+    <%= if @search_query == "" && !@searching do %>
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body flex flex-col items-center justify-center py-16">
+          <.icon name="hero-magnifying-glass" class="w-16 h-16 text-base-content/30 mb-4" />
+          <h3 class="text-xl font-semibold text-base-content/70 mb-2">Search for Media</h3>
+          <p class="text-base-content/50 text-center max-w-md">
+            Enter a movie or TV show name above to find available releases from your configured indexers
+          </p>
+        </div>
       </div>
     <% end %>
+
+    <%!-- Empty State (no results) --%>
+    <%= if @results_empty? && @search_query != "" && !@searching do %>
+      <div class="card bg-base-100 shadow-lg">
+        <div class="card-body flex flex-col items-center justify-center py-16">
+          <.icon name="hero-exclamation-circle" class="w-16 h-16 text-base-content/30 mb-4" />
+          <h3 class="text-xl font-semibold text-base-content/70 mb-2">No Results Found</h3>
+          <p class="text-base-content/50 text-center max-w-md mb-4">
+            No releases found for "<span class="font-semibold">{@search_query}</span>"
+          </p>
+          <div class="text-sm text-base-content/60">
+            <p>Try:</p>
+            <ul class="list-disc list-inside mt-2 space-y-1">
+              <li>Using different keywords or spelling</li>
+              <li>Removing or adjusting filters</li>
+              <li>Checking that your indexers are enabled</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Results --%>
+    <%= if @search_query != "" && !@searching && !@results_empty? do %>
+      <div class="card bg-base-100 shadow-lg overflow-hidden">
+        <%!-- Results count --%>
+        <div class="px-4 py-3 bg-base-200 border-b border-base-300 flex items-center justify-between">
+          <span class="text-sm font-medium">
+            {map_size(@search_results_map)} results for "{@search_query}"
+          </span>
+        </div>
+
+        <%!-- Results Table --%>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full table-fixed">
+            <thead>
+              <tr class="bg-base-200">
+                <th class="w-[50%]">Release</th>
+                <th class="w-[10%]">Size</th>
+                <th class="w-[15%] hidden md:table-cell">Health</th>
+                <th class="w-[15%] hidden lg:table-cell">Source</th>
+                <th class="w-[10%] text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="search-results" phx-update="stream">
+              <tr
+                :for={{id, result} <- @streams.search_results}
+                id={id}
+                class="hover"
+              >
+                <%!-- Title Column --%>
+                <td
+                  class="cursor-pointer max-w-0"
+                  phx-click="show_detail"
+                  phx-value-download_url={result.download_url}
+                >
+                  <div class="flex flex-col min-w-0 gap-1">
+                    <div
+                      class="font-semibold text-sm truncate hover:text-primary"
+                      title={result.title}
+                    >
+                      {result.title}
+                    </div>
+                    <%!-- Quality badges --%>
+                    <div class="flex flex-wrap gap-1">
+                      <%= for badge <- get_quality_badges(result) do %>
+                        <span class={"badge badge-xs #{badge.color}"}>
+                          {badge.text}
+                        </span>
+                      <% end %>
+                    </div>
+                    <%!-- Mobile-only compact info --%>
+                    <div class="flex gap-2 mt-1 md:hidden flex-wrap">
+                      <% mobile_lib_type = detected_library_type(result) %>
+                      <span class={[
+                        "badge badge-xs gap-0.5",
+                        library_type_badge_class(mobile_lib_type)
+                      ]}>
+                        <.icon name={library_type_icon(mobile_lib_type)} class="w-3 h-3" />
+                        {library_type_label(mobile_lib_type)}
+                      </span>
+                      <%= if result.download_protocol == :nzb do %>
+                        <span class="badge badge-info badge-xs">Usenet</span>
+                      <% else %>
+                        <span class="badge badge-ghost badge-xs">
+                          <.icon name="hero-arrow-up" class="w-3 h-3 mr-1" /> {result.seeders}
+                          <span class="mx-1 text-base-content/30">/</span>
+                          <.icon name="hero-arrow-down" class="w-3 h-3 mr-1" /> {result.leechers}
+                        </span>
+                      <% end %>
+                      <span class="badge badge-outline badge-xs">{result.indexer}</span>
+                    </div>
+                  </div>
+                </td>
+                <%!-- Size Column --%>
+                <td class="align-top">
+                  <div class="text-sm font-mono text-base-content/70">
+                    {format_size(result)}
+                  </div>
+                </td>
+                <%!-- Health Column (Seeders/Peers with indicator) - only for torrents --%>
+                <td class="hidden md:table-cell">
+                  <%= if result.download_protocol == :nzb do %>
+                    <span class="badge badge-info badge-sm">Usenet</span>
+                  <% else %>
+                    <div class="flex items-center gap-3">
+                      <%!-- Health indicator --%>
+                      <div
+                        class={"radial-progress #{health_color(health_score(result))}"}
+                        style={"--value:#{trunc(health_score(result) * 100)}; --size:3rem; --thickness: 3px;"}
+                        role="progressbar"
+                      >
+                        <span class="text-xs font-semibold">
+                          {trunc(health_score(result) * 100)}%
+                        </span>
+                      </div>
+                      <%!-- Seeders/Peers --%>
+                      <div class="flex flex-col gap-0.5">
+                        <div class="flex items-center gap-1.5">
+                          <.icon name="hero-arrow-up" class="w-3.5 h-3.5 text-success" />
+                          <span class="text-sm font-semibold text-success">{result.seeders}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                          <.icon name="hero-arrow-down" class="w-3.5 h-3.5 text-base-content/50" />
+                          <span class="text-sm text-base-content/70">{result.leechers}</span>
+                        </div>
+                      </div>
+                    </div>
+                  <% end %>
+                </td>
+                <%!-- Source Column (Indexer + Category + Date) --%>
+                <td class="hidden lg:table-cell">
+                  <div class="flex flex-col gap-1">
+                    <div class="flex flex-wrap gap-1">
+                      <% lib_type = detected_library_type(result) %>
+                      <span
+                        class={["badge badge-sm gap-1", library_type_badge_class(lib_type)]}
+                        title={"Will download to: #{library_type_label(lib_type)}"}
+                      >
+                        <.icon name={library_type_icon(lib_type)} class="w-3 h-3" />
+                        {library_type_label(lib_type)}
+                      </span>
+                      <span class="badge badge-outline badge-sm">{result.indexer}</span>
+                    </div>
+                    <span class="text-xs text-base-content/60">
+                      {format_date(result.published_at)}
+                    </span>
+                  </div>
+                </td>
+                <%!-- Actions Column --%>
+                <td class="text-right">
+                  <% action_lib_type = detected_library_type(result) %>
+                  <%= if @current_user && @current_user.role == "guest" do %>
+                    <%!-- Guest users cannot download directly from search --%>
+                    <div class="tooltip tooltip-left" data-tip="Please use the request system">
+                      <button class="btn btn-sm btn-ghost" disabled>
+                        <.icon name="hero-lock-closed" class="w-4 h-4" />
+                        <span class="hidden xl:inline">Restricted</span>
+                      </button>
+                    </div>
+                  <% else %>
+                    <%!-- Admin users can download - show detected library type --%>
+                    <div class="flex items-center justify-end gap-1">
+                      <div
+                        class="tooltip tooltip-left"
+                        data-tip={
+                          if action_lib_type == :unknown,
+                            do: "Category not detected - select manually",
+                            else: "Will download to: #{library_type_label(action_lib_type)}"
+                        }
+                      >
+                        <span class={[
+                          "badge badge-sm gap-0.5",
+                          library_type_badge_class(action_lib_type)
+                        ]}>
+                          <.icon name={library_type_icon(action_lib_type)} class="w-3 h-3" />
+                          <span class="hidden sm:inline">
+                            {library_type_label(action_lib_type)}
+                          </span>
+                        </span>
+                      </div>
+                      <button
+                        class="btn btn-sm btn-primary"
+                        phx-click="show_download_modal"
+                        phx-value-download_url={result.download_url}
+                        title="Download to library"
+                      >
+                        <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
+                      </button>
+                    </div>
+                  <% end %>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    <% end %>
+
     <%!-- Disambiguation Modal Component --%>
     <.live_component
       module={MydiaWeb.Live.Components.DisambiguationModalComponent}
@@ -304,6 +400,7 @@
       on_select="select_metadata_match"
       on_cancel="close_disambiguation_modal"
     />
+
     <%!-- Manual Search Modal Component --%>
     <.live_component
       module={MydiaWeb.Live.Components.ManualSearchModalComponent}
@@ -316,6 +413,7 @@
       on_select="select_manual_match"
       on_cancel="close_manual_search_modal"
     />
+
     <%!-- Retry Modal --%>
     <%= if @show_retry_modal do %>
       <div class="modal modal-open">
@@ -341,6 +439,7 @@
         </div>
       </div>
     <% end %>
+
     <%!-- Detail Modal --%>
     <%= if @show_detail_modal && @selected_result do %>
       <div class="modal modal-open">
@@ -419,6 +518,19 @@
           <% end %>
           <%!-- Additional Info --%>
           <div class="space-y-3 mb-6">
+            <%!-- Library type indicator - prominent placement --%>
+            <% detail_lib_type = detected_library_type(@selected_result) %>
+            <div class="flex items-center gap-2 text-sm">
+              <.icon
+                name={library_type_icon(detail_lib_type)}
+                class="w-5 h-5 text-base-content/50"
+              />
+              <span class="text-base-content/70">Downloads to:</span>
+              <span class={["badge gap-1", library_type_badge_class(detail_lib_type)]}>
+                <.icon name={library_type_icon(detail_lib_type)} class="w-4 h-4" />
+                {library_type_label(detail_lib_type)}
+              </span>
+            </div>
             <%= if @selected_result.published_at do %>
               <div class="flex items-center gap-2 text-sm">
                 <.icon name="hero-calendar" class="w-5 h-5 text-base-content/50" />
@@ -431,6 +543,13 @@
               <span class="text-base-content/70">Indexer:</span>
               <span class="font-semibold">{@selected_result.indexer}</span>
             </div>
+            <%= if @selected_result.category do %>
+              <div class="flex items-center gap-2 text-sm">
+                <.icon name="hero-tag" class="w-5 h-5 text-base-content/50" />
+                <span class="text-base-content/70">Category:</span>
+                <span class="font-semibold">{@selected_result.category}</span>
+              </div>
+            <% end %>
           </div>
           <%!-- Actions --%>
           <div class="modal-action flex gap-2">
@@ -439,25 +558,152 @@
             </button>
             <%= if @current_user && @current_user.role == "guest" do %>
               <%!-- Guest users see a message about using the request system --%>
-              <div class="alert alert-info flex-1">
+              <div role="alert" class="alert alert-info flex-1">
                 <.icon name="hero-information-circle" class="w-5 h-5" />
                 <span class="text-sm">
                   Please use the request system to add media to the library
                 </span>
               </div>
             <% else %>
-              <%!-- Admin users can download --%>
+              <%!-- Admin users can download - close detail modal and open download modal --%>
               <button
                 class="btn btn-primary"
-                phx-click="add_to_library"
-                phx-value-title={@selected_result.title}
+                phx-click="show_download_modal"
                 phx-value-download_url={@selected_result.download_url}
-                phx-value-download="true"
               >
                 <.icon name="hero-arrow-down-tray" class="w-5 h-5" /> Download
               </button>
             <% end %>
           </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%!-- Download Modal - Library Type Selection --%>
+    <%= if @show_download_modal && @download_modal_result do %>
+      <div class="modal modal-open">
+        <div class="modal-box max-w-lg">
+          <button
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            phx-click="close_download_modal"
+          >
+            <.icon name="hero-x-mark" class="w-5 h-5" />
+          </button>
+          <h3 class="font-bold text-xl mb-4">
+            <.icon name="hero-arrow-down-tray" class="w-6 h-6 inline text-primary" /> Download
+          </h3>
+
+          <%!-- Release info --%>
+          <div class="bg-base-200 rounded-lg p-4 mb-4">
+            <div class="font-semibold text-sm truncate" title={@download_modal_result.title}>
+              {@download_modal_result.title}
+            </div>
+            <div class="text-sm text-base-content/70 mt-1">
+              {format_size(@download_modal_result)}
+              <%= if @download_modal_result.category do %>
+                <span class="mx-2">•</span>
+                <span class="badge badge-ghost badge-sm">
+                  {Mydia.Indexers.CategoryMapping.category_name(@download_modal_result.category)}
+                </span>
+              <% end %>
+            </div>
+          </div>
+
+          <%!-- Category detection warning --%>
+          <%= if is_nil(@download_target_type) do %>
+            <div role="alert" class="alert alert-info mb-4">
+              <.icon name="hero-information-circle" class="w-5 h-5" />
+              <span class="text-sm">
+                Category not detected from indexer. Please select the library type manually.
+              </span>
+            </div>
+          <% end %>
+
+          <%!-- Library type selector --%>
+          <div class="form-control mb-4">
+            <label class="label">
+              <span class="label-text font-semibold">Download to library type</span>
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <%= for {type, label} <- [{:movies, "Movies"}, {:series, "TV Series"}, {:music, "Music"}, {:books, "Books"}, {:adult, "Adult"}] do %>
+                <button
+                  type="button"
+                  class={[
+                    "btn btn-outline gap-2",
+                    @download_target_type == type && "btn-active btn-primary"
+                  ]}
+                  phx-click="set_download_target_type"
+                  phx-value-type={type}
+                >
+                  <.icon name={library_type_icon(type)} class="w-4 h-4" />
+                  {label}
+                </button>
+              <% end %>
+            </div>
+            <label class="label">
+              <span class="label-text-alt text-base-content/60">
+                <%= cond do %>
+                  <% @download_target_type in [:movies, :series] -> %>
+                    Will search metadata providers to match title
+                  <% @download_target_type in [:music, :books, :adult] -> %>
+                    Will download directly without metadata lookup
+                  <% true -> %>
+                    Select a library type to continue
+                <% end %>
+              </span>
+            </label>
+          </div>
+
+          <%!-- Check if library path exists for selected type --%>
+          <%= if @download_target_type in [:music, :books, :adult] do %>
+            <% library_path_exists =
+              Enum.any?(@library_paths, &(&1.type == @download_target_type)) %>
+            <%= unless library_path_exists do %>
+              <div role="alert" class="alert alert-warning mb-4">
+                <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+                <span class="text-sm">
+                  No library path configured for {library_type_label(@download_target_type)}.
+                  <a href="/admin/config" class="link link-primary">Configure one</a>
+                  before downloading.
+                </span>
+              </div>
+            <% end %>
+          <% end %>
+
+          <%!-- Actions --%>
+          <div class="modal-action">
+            <button
+              class="btn btn-ghost"
+              phx-click="close_download_modal"
+              disabled={@confirming_download}
+            >
+              Cancel
+            </button>
+            <button
+              class={[
+                "btn btn-primary",
+                (@confirming_download || is_nil(@download_target_type)) && "btn-disabled"
+              ]}
+              phx-click="confirm_download"
+              disabled={
+                @confirming_download ||
+                  is_nil(@download_target_type) ||
+                  (@download_target_type in [:music, :books, :adult] &&
+                     not Enum.any?(@library_paths, &(&1.type == @download_target_type)))
+              }
+            >
+              <%= if @confirming_download do %>
+                <span class="loading loading-spinner loading-sm"></span> Adding...
+              <% else %>
+                <.icon name="hero-arrow-down-tray" class="w-5 h-5" /> Download
+              <% end %>
+            </button>
+          </div>
+        </div>
+        <div
+          class="modal-backdrop"
+          phx-click={unless @confirming_download, do: "close_download_modal"}
+        >
         </div>
       </div>
     <% end %>

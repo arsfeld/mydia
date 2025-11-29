@@ -2,18 +2,59 @@ defmodule MydiaWeb.SearchLive.Index do
   use MydiaWeb, :live_view
   alias Mydia.Indexers
   alias Mydia.Indexers.SearchResult
+  alias Mydia.Indexers.CategoryMapping
   alias Mydia.Library.FileParser.V2, as: FileParser
   alias Mydia.Metadata
   alias Mydia.Media
   alias Mydia.Downloads
+  alias Mydia.Settings
 
   require Logger
+
+  # Library type options for the filter
+  @library_type_options [
+    {:all, "All Types"},
+    {:movies, "Movies"},
+    {:series, "TV Series"},
+    {:music, "Music"},
+    {:books, "Books"},
+    {:adult, "Adult"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Mydia.PubSub, "downloads")
     end
+
+    # Load available indexers (both traditional and Cardigann)
+    traditional_indexers =
+      Settings.list_indexer_configs()
+      |> Enum.filter(& &1.enabled)
+      |> Enum.map(fn indexer ->
+        %{id: indexer.id, name: indexer.name, type: indexer.type, source: :traditional}
+      end)
+
+    cardigann_indexers =
+      if Indexers.CardigannFeatureFlags.enabled?() do
+        Indexers.list_cardigann_definitions(enabled: true)
+        |> Enum.map(fn def ->
+          %{id: def.id, name: def.name, type: :cardigann, source: :cardigann}
+        end)
+      else
+        []
+      end
+
+    available_indexers = traditional_indexers ++ cardigann_indexers
+
+    # By default, select all enabled indexers
+    selected_indexer_ids =
+      available_indexers
+      |> Enum.map(& &1.id)
+      |> MapSet.new()
+
+    # Load library paths for download target selector
+    library_paths = Settings.list_library_paths()
 
     {:ok,
      socket
@@ -24,6 +65,8 @@ defmodule MydiaWeb.SearchLive.Index do
      |> assign(:max_size_gb, nil)
      |> assign(:min_size_gb, nil)
      |> assign(:quality_filter, nil)
+     |> assign(:library_type_filter, :all)
+     |> assign(:library_type_options, @library_type_options)
      |> assign(:sort_by, :quality)
      |> assign(:results_empty?, false)
      |> assign(:show_disambiguation_modal, false)
@@ -41,6 +84,13 @@ defmodule MydiaWeb.SearchLive.Index do
      |> assign(:search_results_map, %{})
      |> assign(:show_detail_modal, false)
      |> assign(:selected_result, nil)
+     |> assign(:show_download_modal, false)
+     |> assign(:download_modal_result, nil)
+     |> assign(:download_target_type, nil)
+     |> assign(:confirming_download, false)
+     |> assign(:library_paths, library_paths)
+     |> assign(:available_indexers, available_indexers)
+     |> assign(:selected_indexer_ids, selected_indexer_ids)
      |> stream_configure(:search_results, dom_id: &generate_result_id/1)
      |> stream(:search_results, [])}
   end
@@ -52,11 +102,12 @@ defmodule MydiaWeb.SearchLive.Index do
         %{"q" => query} when is_binary(query) and query != "" ->
           # Trigger a search with the query parameter
           min_seeders = socket.assigns.min_seeders
+          indexer_ids = MapSet.to_list(socket.assigns.selected_indexer_ids)
 
           socket
           |> assign(:search_query, query)
           |> assign(:searching, true)
-          |> start_async(:search, fn -> perform_search(query, min_seeders) end)
+          |> start_async(:search, fn -> perform_search(query, min_seeders, indexer_ids) end)
 
         _ ->
           socket
@@ -78,12 +129,13 @@ defmodule MydiaWeb.SearchLive.Index do
     else
       # Extract only needed values to avoid copying the whole assigns to the async task
       min_seeders = socket.assigns.min_seeders
+      indexer_ids = MapSet.to_list(socket.assigns.selected_indexer_ids)
 
       {:noreply,
        socket
        |> assign(:search_query, query)
        |> assign(:searching, true)
-       |> start_async(:search, fn -> perform_search(query, min_seeders) end)}
+       |> start_async(:search, fn -> perform_search(query, min_seeders, indexer_ids) end)}
     end
   end
 
@@ -101,6 +153,21 @@ defmodule MydiaWeb.SearchLive.Index do
         "" -> nil
         q when q in ["720p", "1080p", "2160p", "4k"] -> q
         _ -> nil
+      end
+
+    library_type_filter =
+      case params["library_type"] do
+        "" ->
+          :all
+
+        "all" ->
+          :all
+
+        type when type in ["movies", "series", "music", "books", "adult"] ->
+          String.to_existing_atom(type)
+
+        _ ->
+          socket.assigns.library_type_filter
       end
 
     min_size_gb =
@@ -121,6 +188,7 @@ defmodule MydiaWeb.SearchLive.Index do
      socket
      |> assign(:min_seeders, min_seeders)
      |> assign(:quality_filter, quality_filter)
+     |> assign(:library_type_filter, library_type_filter)
      |> assign(:min_size_gb, min_size_gb)
      |> assign(:max_size_gb, max_size_gb)
      |> apply_filters()}
@@ -133,6 +201,32 @@ defmodule MydiaWeb.SearchLive.Index do
      socket
      |> assign(:sort_by, sort_by)
      |> apply_sort()}
+  end
+
+  def handle_event("toggle_indexer", %{"id" => indexer_id}, socket) do
+    selected_ids = socket.assigns.selected_indexer_ids
+
+    selected_ids =
+      if MapSet.member?(selected_ids, indexer_id) do
+        MapSet.delete(selected_ids, indexer_id)
+      else
+        MapSet.put(selected_ids, indexer_id)
+      end
+
+    {:noreply, assign(socket, :selected_indexer_ids, selected_ids)}
+  end
+
+  def handle_event("select_all_indexers", _params, socket) do
+    all_ids =
+      socket.assigns.available_indexers
+      |> Enum.map(& &1.id)
+      |> MapSet.new()
+
+    {:noreply, assign(socket, :selected_indexer_ids, all_ids)}
+  end
+
+  def handle_event("deselect_all_indexers", _params, socket) do
+    {:noreply, assign(socket, :selected_indexer_ids, MapSet.new())}
   end
 
   def handle_event("add_to_library", %{"title" => title} = params, socket) do
@@ -286,6 +380,85 @@ defmodule MydiaWeb.SearchLive.Index do
      socket
      |> assign(:show_retry_modal, false)
      |> assign(:retry_error_message, nil)}
+  end
+
+  def handle_event("show_download_modal", %{"download_url" => download_url}, socket) do
+    # Find the search result by download URL
+    search_result = Map.get(socket.assigns.search_results_map, download_url)
+
+    # Detect the library type from category - nil if unknown
+    detected_type =
+      if search_result && is_integer(search_result.category) do
+        type = CategoryMapping.type_for_category(search_result.category)
+        # Return nil for :other so user must select
+        if type == :other, do: nil, else: type
+      else
+        # No category detected - require manual selection
+        nil
+      end
+
+    {:noreply,
+     socket
+     # Close detail modal if it's open
+     |> assign(:show_detail_modal, false)
+     |> assign(:selected_result, nil)
+     # Open download modal
+     |> assign(:show_download_modal, true)
+     |> assign(:download_modal_result, search_result)
+     |> assign(:download_target_type, detected_type)}
+  end
+
+  def handle_event("close_download_modal", _params, socket) do
+    {:noreply, close_download_modal(socket)}
+  end
+
+  def handle_event("set_download_target_type", %{"type" => type}, socket) do
+    target_type = String.to_existing_atom(type)
+
+    {:noreply, assign(socket, :download_target_type, target_type)}
+  end
+
+  def handle_event("confirm_download", _params, socket) do
+    search_result = socket.assigns.download_modal_result
+    target_type = socket.assigns.download_target_type
+
+    if search_result do
+      Logger.info("Confirming download for: #{search_result.title}, target type: #{target_type}")
+
+      # Set loading state - modal will be closed when async completes
+      socket = assign(socket, :confirming_download, true)
+
+      # Use the target type to determine the download flow
+      case target_type do
+        type when type in [:music, :books, :adult] ->
+          # For specialized libraries, download directly without metadata lookup
+          {:noreply,
+           socket
+           |> assign(:pending_release_title, search_result.title)
+           |> assign(:pending_search_result, search_result)
+           |> assign(:should_download_after_add, true)
+           |> start_async(:direct_download, fn ->
+             direct_download_to_library(search_result, type)
+           end)}
+
+        type when type in [:movies, :series] ->
+          # For movies/series, use the existing metadata lookup flow
+          {:noreply,
+           socket
+           |> assign(:pending_release_title, search_result.title)
+           |> assign(:pending_search_result, search_result)
+           |> assign(:should_download_after_add, true)
+           |> start_async(:add_to_library, fn ->
+             add_release_to_library(search_result.title)
+           end)}
+
+        _ ->
+          {:noreply,
+           close_download_modal(put_flash(socket, :error, "Unknown library type: #{target_type}"))}
+      end
+    else
+      {:noreply, close_download_modal(put_flash(socket, :error, "No search result selected"))}
+    end
   end
 
   def handle_event("show_detail", %{"download_url" => download_url}, socket) do
@@ -448,29 +621,32 @@ defmodule MydiaWeb.SearchLive.Index do
     Logger.info("Successfully added #{media_item.title} to library")
 
     socket =
-      if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
-        Logger.info("Triggering download for #{media_item.title}")
-        # Trigger download - this will be handled by the download handler
-        send(
-          self(),
-          {:trigger_download, socket.assigns.pending_search_result, media_item.id,
-           media_item.title}
-        )
+      socket
+      |> close_download_modal()
+      |> then(fn socket ->
+        if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
+          Logger.info("Triggering download for #{media_item.title}")
+          # Trigger download - this will be handled by the download handler
+          send(
+            self(),
+            {:trigger_download, socket.assigns.pending_search_result, media_item.id,
+             media_item.title}
+          )
 
-        socket
-        |> put_flash(:info, "#{media_item.title} added to library")
-      else
-        socket
-        |> put_flash(:info, "#{media_item.title} added to library")
-      end
+          put_flash(socket, :info, "#{media_item.title} added to library")
+        else
+          put_flash(socket, :info, "#{media_item.title} added to library")
+        end
+      end)
 
-    {:noreply,
-     socket
-     |> push_navigate(to: ~p"/media/#{media_item.id}")}
+    {:noreply, push_navigate(socket, to: ~p"/media/#{media_item.id}")}
   end
 
   def handle_async(:add_to_library, {:ok, {:error, reason}}, socket) do
     Logger.error("Failed to add to library: #{inspect(reason)}")
+
+    # Close download modal first
+    socket = close_download_modal(socket)
 
     case reason do
       :parse_failed ->
@@ -509,7 +685,10 @@ defmodule MydiaWeb.SearchLive.Index do
   def handle_async(:add_to_library, {:exit, reason}, socket) do
     Logger.error("Add to library task crashed: #{inspect(reason)}")
 
-    {:noreply, put_flash(socket, :error, "Failed to add to library unexpectedly")}
+    {:noreply,
+     socket
+     |> close_download_modal()
+     |> put_flash(:error, "Failed to add to library unexpectedly")}
   end
 
   def handle_async(:finalize_add_to_library, {:ok, {:ok, media_item}}, socket) do
@@ -578,7 +757,51 @@ defmodule MydiaWeb.SearchLive.Index do
     {:noreply, put_flash(socket, :error, "Failed to add to library: #{inspect(reason)}")}
   end
 
+  # Handle direct download async results (for specialized libraries)
+  def handle_async(:direct_download, {:ok, {:ok, download}}, socket) do
+    Logger.info("Direct download started successfully: #{download.title}")
+
+    {:noreply,
+     socket
+     |> close_download_modal()
+     |> put_flash(:info, "Download started: #{download.title}")
+     |> push_navigate(to: ~p"/downloads")}
+  end
+
+  def handle_async(:direct_download, {:ok, {:error, reason}}, socket) do
+    Logger.error("Direct download failed: #{inspect(reason)}")
+
+    error_msg =
+      case reason do
+        :no_library_path -> "No library path configured for this type"
+        {:client_error, err} -> "Download client error: #{inspect(err)}"
+        _ -> "Download failed: #{inspect(reason)}"
+      end
+
+    {:noreply,
+     socket
+     |> close_download_modal()
+     |> put_flash(:error, error_msg)}
+  end
+
+  def handle_async(:direct_download, {:exit, reason}, socket) do
+    Logger.error("Direct download task crashed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> close_download_modal()
+     |> put_flash(:error, "Download failed unexpectedly")}
+  end
+
   ## Private Functions
+
+  defp close_download_modal(socket) do
+    socket
+    |> assign(:show_download_modal, false)
+    |> assign(:download_modal_result, nil)
+    |> assign(:download_target_type, nil)
+    |> assign(:confirming_download, false)
+  end
 
   defp generate_result_id(%SearchResult{} = result) do
     # Generate a unique ID based on the download URL and indexer
@@ -587,10 +810,11 @@ defmodule MydiaWeb.SearchLive.Index do
     "search-result-#{hash}"
   end
 
-  defp perform_search(query, min_seeders) do
+  defp perform_search(query, min_seeders, indexer_ids) do
     opts = [
       min_seeders: min_seeders,
-      deduplicate: true
+      deduplicate: true,
+      indexer_ids: indexer_ids
     ]
 
     Indexers.search_all(query, opts)
@@ -620,6 +844,7 @@ defmodule MydiaWeb.SearchLive.Index do
     results
     |> filter_by_seeders(assigns.min_seeders)
     |> filter_by_quality(assigns.quality_filter)
+    |> filter_by_library_type(assigns.library_type_filter)
     |> filter_by_size(assigns.min_size_gb, assigns.max_size_gb)
   end
 
@@ -642,6 +867,21 @@ defmodule MydiaWeb.SearchLive.Index do
 
         _ ->
           false
+      end
+    end)
+  end
+
+  defp filter_by_library_type(results, :all), do: results
+
+  defp filter_by_library_type(results, library_type) do
+    # Get the categories for this library type
+    category_ids = CategoryMapping.categories_for_type(library_type)
+
+    Enum.filter(results, fn result ->
+      case result.category do
+        nil -> false
+        category_id when is_integer(category_id) -> category_id in category_ids
+        _ -> false
       end
     end)
   end
@@ -789,6 +1029,19 @@ defmodule MydiaWeb.SearchLive.Index do
   defp format_date(%DateTime{} = dt) do
     Calendar.strftime(dt, "%b %d, %Y")
   end
+
+  # Indexer type helpers for the template
+  defp indexer_type_badge_class(:prowlarr), do: "badge-primary"
+  defp indexer_type_badge_class(:jackett), do: "badge-secondary"
+  defp indexer_type_badge_class(:nzbhydra2), do: "badge-accent"
+  defp indexer_type_badge_class(:public), do: "badge-ghost"
+  defp indexer_type_badge_class(_), do: "badge-ghost"
+
+  defp indexer_type_label(:prowlarr), do: "Prowlarr"
+  defp indexer_type_label(:jackett), do: "Jackett"
+  defp indexer_type_label(:nzbhydra2), do: "NZBHydra2"
+  defp indexer_type_label(:public), do: "Public"
+  defp indexer_type_label(type), do: to_string(type)
 
   ## Add to Library Functions
 
@@ -1037,4 +1290,68 @@ defmodule MydiaWeb.SearchLive.Index do
 
   defp format_client_error(error) when is_binary(error), do: error
   defp format_client_error(error), do: inspect(error)
+
+  # Direct download for specialized libraries (music, books, adult)
+  # These don't require metadata lookup - just start the download
+  defp direct_download_to_library(search_result, library_type) do
+    Logger.info("Starting direct download for #{library_type}: #{search_result.title}")
+
+    # Find a library path for this type
+    library_paths = Settings.list_library_paths()
+    library_path = Enum.find(library_paths, fn path -> path.type == library_type end)
+
+    if library_path do
+      # Initiate the download with library_path_id instead of media_item_id
+      Downloads.initiate_download(search_result, library_path_id: library_path.id)
+    else
+      Logger.warning("No library path found for type: #{library_type}")
+      {:error, :no_library_path}
+    end
+  end
+
+  # Helper to get library type label for display
+  defp library_type_label(:movies), do: "Movies"
+  defp library_type_label(:series), do: "TV Series"
+  defp library_type_label(:music), do: "Music"
+  defp library_type_label(:books), do: "Books"
+  defp library_type_label(:adult), do: "Adult"
+  defp library_type_label(:other), do: "Other"
+  defp library_type_label(:unknown), do: "Select"
+  defp library_type_label(_), do: "Unknown"
+
+  # Helper to get library type icon
+  defp library_type_icon(:movies), do: "hero-film"
+  defp library_type_icon(:series), do: "hero-tv"
+  defp library_type_icon(:music), do: "hero-musical-note"
+  defp library_type_icon(:books), do: "hero-book-open"
+  defp library_type_icon(:adult), do: "hero-eye-slash"
+  defp library_type_icon(:unknown), do: "hero-question-mark-circle"
+  defp library_type_icon(_), do: "hero-question-mark-circle"
+
+  # Helper to get the detected library type for a search result
+  # Returns {:ok, type} if detected, :unknown if category is nil/missing
+  defp detected_library_type(%SearchResult{category: nil}), do: :unknown
+
+  defp detected_library_type(%SearchResult{category: category}) when is_integer(category) do
+    CategoryMapping.type_for_category(category)
+  end
+
+  defp detected_library_type(%SearchResult{category: category}) when is_binary(category) do
+    # Try to parse string category to integer
+    case Integer.parse(category) do
+      {id, _} -> CategoryMapping.type_for_category(id)
+      :error -> :unknown
+    end
+  end
+
+  defp detected_library_type(_), do: :unknown
+
+  # Badge color for library type
+  defp library_type_badge_class(:movies), do: "badge-primary"
+  defp library_type_badge_class(:series), do: "badge-secondary"
+  defp library_type_badge_class(:music), do: "badge-accent"
+  defp library_type_badge_class(:books), do: "badge-info"
+  defp library_type_badge_class(:adult), do: "badge-warning"
+  defp library_type_badge_class(:unknown), do: "badge-neutral"
+  defp library_type_badge_class(_), do: "badge-ghost"
 end
