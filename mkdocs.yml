@@ -1,0 +1,92 @@
+site_name: Mydia Documentation
+site_description: A modern, self-hosted media management platform for tracking, organizing, and monitoring your media library
+site_url: https://getmydia.github.io/mydia
+repo_url: https://github.com/getmydia/mydia
+repo_name: getmydia/mydia
+docs_dir: mkdocs-docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: getting-started/quick-start.md
+      - Installation: getting-started/installation.md
+      - First Steps: getting-started/first-steps.md
+  - User Guide:
+      - Managing Libraries: user-guide/libraries.md
+      - Adding Media: user-guide/adding-media.md
+      - Quality Profiles: user-guide/quality-profiles.md
+      - Download Clients: user-guide/download-clients.md
+      - Indexers: user-guide/indexers.md
+      - User Management: user-guide/users.md
+  - Reference:
+      - Environment Variables: reference/environment-variables.md
+      - Configuration: reference/configuration.md
+      - Database: reference/database.md
+      - API: reference/api.md
+  - Advanced:
+      - Deployment: advanced/deployment.md
+      - PostgreSQL: advanced/postgresql.md
+      - SSO/OIDC: advanced/oidc.md
+      - Cardigann Indexers: advanced/cardigann.md
+  - Development:
+      - Setup: development/setup.md
+      - Testing: development/testing.md
+      - E2E Testing: development/e2e-testing.md
+      - Architecture: development/architecture.md
+
+extra:
+  version:
+    provider: mike
+    default: latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/getmydia/mydia
