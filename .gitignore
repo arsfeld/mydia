@@ -64,3 +64,9 @@ compose.override.yml
 # Backlog.md task management (managed via MCP)
 /backlog/
 
+# MkDocs build output
+/site/
+
+# Python virtual environment
+.venv/
+
