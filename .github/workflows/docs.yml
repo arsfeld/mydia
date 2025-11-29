@@ -35,14 +35,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: |
-          pip install mkdocs mkdocs-material mike
+        run: uv sync --frozen --project mkdocs-docs
 
       - name: Configure Git
         run: |
@@ -56,8 +53,8 @@ jobs:
       - name: Deploy latest (push to master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
-          mike deploy --push --update-aliases latest
-          mike set-default --push latest
+          uv run --project mkdocs-docs mike deploy --push --update-aliases latest
+          uv run --project mkdocs-docs mike set-default --push latest
 
       - name: Deploy release version
         if: github.event_name == 'release'
@@ -65,16 +62,16 @@ jobs:
           VERSION="${{ github.event.release.tag_name }}"
           # Remove 'v' prefix if present
           VERSION="${VERSION#v}"
-          mike deploy --push --update-aliases "$VERSION" latest
-          mike set-default --push latest
+          uv run --project mkdocs-docs mike deploy --push --update-aliases "$VERSION" latest
+          uv run --project mkdocs-docs mike set-default --push latest
 
       - name: Deploy manual version
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ github.event.inputs.version }}"
           if [ "$VERSION" = "latest" ]; then
-            mike deploy --push --update-aliases latest
+            uv run --project mkdocs-docs mike deploy --push --update-aliases latest
           else
-            mike deploy --push --update-aliases "$VERSION"
+            uv run --project mkdocs-docs mike deploy --push --update-aliases "$VERSION"
           fi
-          mike set-default --push latest
+          uv run --project mkdocs-docs mike set-default --push latest

@@ -69,4 +69,5 @@ compose.override.yml
 
 # Python virtual environment
 .venv/
+mkdocs-docs/.venv/
 

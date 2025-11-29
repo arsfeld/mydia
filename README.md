@@ -92,6 +92,16 @@ Full documentation available at **[getmydia.github.io/mydia](https://getmydia.gi
 
 See the [Development Guide](https://getmydia.github.io/mydia/development/setup/) for details.
 
+### Documentation
+
+Docs are built with [MkDocs](https://www.mkdocs.org/) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/). Requires [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --project mkdocs-docs            # Install dependencies
+uv run --project mkdocs-docs mkdocs serve   # Serve at http://localhost:8000
+uv run --project mkdocs-docs mkdocs build   # Build static site to /site
+```
+
 ## License
 
 Built with Elixir & Phoenix
