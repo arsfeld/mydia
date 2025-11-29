@@ -47,6 +47,7 @@ defmodule Mydia.Downloads.Client.QBittorrent do
 
   alias Mydia.Downloads.Client.{Error, HTTP}
   alias Mydia.Downloads.Structs.{ClientInfo, TorrentStatus}
+  alias Mydia.Downloads.TorrentHash
 
   @impl true
   def test_connection(config) do
@@ -283,40 +284,9 @@ defmodule Mydia.Downloads.Client.QBittorrent do
     Map.put(body, key, transform.(value))
   end
 
-  defp extract_torrent_hash({:magnet, magnet_link}) do
-    # Extract hash from magnet link (urn:btih:HASH)
-    case Regex.run(~r/urn:btih:([a-fA-F0-9]{40})/i, magnet_link) do
-      [_, hash] ->
-        {:ok, String.downcase(hash)}
-
-      _ ->
-        {:error,
-         Error.invalid_torrent("Could not extract hash from magnet link", %{
-           magnet: magnet_link
-         })}
-    end
-  end
-
-  defp extract_torrent_hash({:file, file_contents}) do
-    # Extract info hash from torrent file by finding and hashing the "info" dictionary
-    case extract_info_hash_from_torrent(file_contents) do
-      {:ok, hash} -> {:ok, hash}
-      {:error, reason} -> {:error, Error.invalid_torrent(reason)}
-    end
-  end
-
-  defp extract_torrent_hash({:url, url}) do
-    # Try to download the torrent file and extract hash
-    case Req.get(url) do
-      {:ok, %{status: 200, body: body}} when is_binary(body) ->
-        extract_info_hash_from_torrent(body)
-
-      {:ok, %{status: status}} ->
-        {:error, Error.api_error("Failed to download torrent: HTTP #{status}")}
-
-      {:error, reason} ->
-        {:error, Error.api_error("Failed to download torrent: #{inspect(reason)}")}
-    end
+  defp extract_torrent_hash(torrent_input) do
+    # qBittorrent uses lowercase hashes
+    TorrentHash.extract(torrent_input, case: :lower)
   end
 
   defp build_list_params(opts) do
@@ -403,161 +373,4 @@ defmodule Mydia.Downloads.Client.QBittorrent do
   end
 
   defp parse_timestamp(_), do: nil
-
-  # Extract the info hash from a torrent file
-  # The info hash is the SHA1 of the bencoded "info" dictionary
-  defp extract_info_hash_from_torrent(torrent_data) when is_binary(torrent_data) do
-    # Find the "info" key in the torrent dictionary
-    # Torrent files are bencoded: d...4:info<info_dict>...e
-    case find_info_dict_boundaries(torrent_data) do
-      {:ok, start_pos, end_pos} ->
-        info_bytes = binary_part(torrent_data, start_pos, end_pos - start_pos)
-        hash = :crypto.hash(:sha, info_bytes) |> Base.encode16(case: :lower)
-        {:ok, hash}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # Find the start and end positions of the "info" dictionary value
-  defp find_info_dict_boundaries(data) do
-    # Look for "4:info" followed by a dictionary "d" or other bencode value
-    case :binary.match(data, "4:info") do
-      {pos, 6} ->
-        # The info value starts right after "4:info"
-        value_start = pos + 6
-
-        # Parse the bencoded value to find its end
-        case find_bencode_value_end(data, value_start) do
-          {:ok, value_end} -> {:ok, value_start, value_end}
-          error -> error
-        end
-
-      :nomatch ->
-        {:error, "Could not find 'info' key in torrent file"}
-    end
-  end
-
-  # Find the end position of a bencoded value starting at `pos`
-  defp find_bencode_value_end(data, pos) when pos < byte_size(data) do
-    case :binary.at(data, pos) do
-      # Dictionary: d...e
-      ?d -> find_dict_end(data, pos + 1, 1)
-      # List: l...e
-      ?l -> find_list_end(data, pos + 1, 1)
-      # Integer: i<num>e
-      ?i -> find_int_end(data, pos + 1)
-      # String: <len>:<content>
-      c when c >= ?0 and c <= ?9 -> find_string_end(data, pos)
-      _ -> {:error, "Invalid bencode at position #{pos}"}
-    end
-  end
-
-  defp find_bencode_value_end(_data, _pos), do: {:error, "Unexpected end of data"}
-
-  # Find end of bencoded dictionary (handles nested structures)
-  defp find_dict_end(data, pos, depth) when pos < byte_size(data) do
-    case :binary.at(data, pos) do
-      ?e when depth == 1 ->
-        {:ok, pos + 1}
-
-      ?e ->
-        find_dict_end(data, pos + 1, depth - 1)
-
-      ?d ->
-        find_dict_end(data, pos + 1, depth + 1)
-
-      ?l ->
-        find_dict_end(data, pos + 1, depth + 1)
-
-      ?i ->
-        case find_int_end(data, pos + 1) do
-          {:ok, new_pos} -> find_dict_end(data, new_pos, depth)
-          error -> error
-        end
-
-      c when c >= ?0 and c <= ?9 ->
-        case find_string_end(data, pos) do
-          {:ok, new_pos} -> find_dict_end(data, new_pos, depth)
-          error -> error
-        end
-
-      _ ->
-        {:error, "Invalid bencode in dictionary at position #{pos}"}
-    end
-  end
-
-  defp find_dict_end(_data, _pos, _depth), do: {:error, "Unexpected end of dictionary"}
-
-  # Find end of bencoded list
-  defp find_list_end(data, pos, depth) when pos < byte_size(data) do
-    case :binary.at(data, pos) do
-      ?e when depth == 1 ->
-        {:ok, pos + 1}
-
-      ?e ->
-        find_list_end(data, pos + 1, depth - 1)
-
-      ?d ->
-        find_list_end(data, pos + 1, depth + 1)
-
-      ?l ->
-        find_list_end(data, pos + 1, depth + 1)
-
-      ?i ->
-        case find_int_end(data, pos + 1) do
-          {:ok, new_pos} -> find_list_end(data, new_pos, depth)
-          error -> error
-        end
-
-      c when c >= ?0 and c <= ?9 ->
-        case find_string_end(data, pos) do
-          {:ok, new_pos} -> find_list_end(data, new_pos, depth)
-          error -> error
-        end
-
-      _ ->
-        {:error, "Invalid bencode in list at position #{pos}"}
-    end
-  end
-
-  defp find_list_end(_data, _pos, _depth), do: {:error, "Unexpected end of list"}
-
-  # Find end of bencoded integer (i<num>e)
-  defp find_int_end(data, pos) when pos < byte_size(data) do
-    case :binary.match(data, "e", scope: {pos, byte_size(data) - pos}) do
-      {end_pos, 1} -> {:ok, end_pos + 1}
-      :nomatch -> {:error, "Unterminated integer"}
-    end
-  end
-
-  defp find_int_end(_data, _pos), do: {:error, "Unexpected end of integer"}
-
-  # Find end of bencoded string (<len>:<content>)
-  defp find_string_end(data, pos) when pos < byte_size(data) do
-    case :binary.match(data, ":", scope: {pos, byte_size(data) - pos}) do
-      {colon_pos, 1} ->
-        len_str = binary_part(data, pos, colon_pos - pos)
-
-        case Integer.parse(len_str) do
-          {len, ""} ->
-            string_end = colon_pos + 1 + len
-
-            if string_end <= byte_size(data) do
-              {:ok, string_end}
-            else
-              {:error, "String extends beyond data"}
-            end
-
-          _ ->
-            {:error, "Invalid string length"}
-        end
-
-      :nomatch ->
-        {:error, "Invalid string format"}
-    end
-  end
-
-  defp find_string_end(_data, _pos), do: {:error, "Unexpected end of string"}
 end
