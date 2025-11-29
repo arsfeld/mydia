@@ -1165,6 +1165,13 @@ defmodule MydiaWeb.AdminConfigLive.Components do
   attr :library_paths, :list, required: true
 
   def library_paths_tab(assigns) do
+    {enabled, disabled} = Enum.split_with(assigns.library_paths, &(!&1.disabled))
+
+    assigns =
+      assigns
+      |> assign(:enabled_paths, enabled)
+      |> assign(:disabled_paths, disabled)
+
     ~H"""
     <div class="p-4 sm:p-6 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1183,61 +1190,105 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           <span>No library paths configured yet. Add a media directory to get started.</span>
         </div>
       <% else %>
-        <div class="bg-base-200 rounded-box divide-y divide-base-300">
-          <%= for path <- @library_paths do %>
-            <div class="p-3 sm:p-4">
-              <%!-- Mobile: stacked, Desktop: flex row --%>
-              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <%!-- Path Info --%>
-                <div class="flex-1 min-w-0">
-                  <div class="font-semibold font-mono text-sm truncate">{path.path}</div>
-                  <%= if path.last_scan_at do %>
-                    <div class="text-xs opacity-60 mt-1">
-                      Last scan: {Calendar.strftime(path.last_scan_at, "%Y-%m-%d %H:%M")}
-                    </div>
-                  <% end %>
-                </div>
+        <%!-- Enabled Libraries --%>
+        <%= if @enabled_paths != [] do %>
+          <div class="bg-base-200 rounded-box divide-y divide-base-300">
+            <%= for library_path <- @enabled_paths do %>
+              <.library_path_row library_path={library_path} />
+            <% end %>
+          </div>
+        <% end %>
 
-                <%!-- Status Badges + Actions row --%>
-                <div class="flex flex-wrap items-center gap-2">
-                  <%!-- Status Badges --%>
-                  <span class={["badge badge-sm", library_type_badge_class(path.type)]}>
-                    <.icon name={library_type_icon(path.type)} class="w-3 h-3 mr-1" />
-                    {library_type_display(path.type)}
-                  </span>
-                  <span class={[
-                    "badge badge-sm",
-                    if(path.monitored, do: "badge-success", else: "badge-ghost")
-                  ]}>
-                    {if path.monitored, do: "Monitored", else: "Not Monitored"}
-                  </span>
+        <%!-- Disabled Libraries --%>
+        <%= if @disabled_paths != [] do %>
+          <div class="divider text-base-content/50 text-sm">
+            <.icon name="hero-eye-slash" class="w-4 h-4" /> Disabled ({length(@disabled_paths)})
+          </div>
+          <div class="bg-base-200 rounded-box divide-y divide-base-300 opacity-60">
+            <%= for library_path <- @disabled_paths do %>
+              <.library_path_row library_path={library_path} />
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+    """
+  end
 
-                  <%!-- Actions --%>
-                  <div class="join ml-auto sm:ml-2">
-                    <button
-                      class="btn btn-sm btn-ghost join-item"
-                      phx-click="edit_library_path"
-                      phx-value-id={path.id}
-                      title="Edit"
-                    >
-                      <.icon name="hero-pencil" class="w-4 h-4" />
-                    </button>
-                    <button
-                      class="btn btn-sm btn-ghost join-item text-error"
-                      phx-click="delete_library_path"
-                      phx-value-id={path.id}
-                      data-confirm="Are you sure you want to delete this library path?"
-                      title="Delete"
-                    >
-                      <.icon name="hero-trash" class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+  attr :library_path, :map, required: true
+
+  defp library_path_row(assigns) do
+    ~H"""
+    <div class="p-3 sm:p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <%!-- Path Info --%>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-semibold">{Path.basename(@library_path.path)}</span>
+            <%= if @library_path.from_env do %>
+              <span
+                class="badge badge-primary badge-xs tooltip"
+                data-tip="Configured via environment variables (read-only)"
+              >
+                <.icon name="hero-lock-closed" class="w-3 h-3" /> ENV
+              </span>
+            <% end %>
+          </div>
+          <div class="text-xs opacity-60 font-mono truncate mt-0.5">{@library_path.path}</div>
+          <%= if @library_path.last_scan_at do %>
+            <div class="text-xs opacity-50 mt-1">
+              Last scan: {Calendar.strftime(@library_path.last_scan_at, "%Y-%m-%d %H:%M")}
             </div>
           <% end %>
         </div>
-      <% end %>
+
+        <%!-- Badges + Actions --%>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class={["badge badge-sm", library_type_badge_class(@library_path.type)]}>
+            <.icon name={library_type_icon(@library_path.type)} class="w-3 h-3 mr-1" />
+            {library_type_display(@library_path.type)}
+          </span>
+          <span class={[
+            "badge badge-sm",
+            if(@library_path.monitored, do: "badge-success", else: "badge-ghost")
+          ]}>
+            {if @library_path.monitored, do: "Monitored", else: "Not Monitored"}
+          </span>
+
+          <div class="join ml-auto sm:ml-2">
+            <%= if @library_path.from_env do %>
+              <div class="tooltip" data-tip="Cannot edit environment-configured libraries">
+                <button class="btn btn-sm btn-ghost join-item" disabled>
+                  <.icon name="hero-pencil" class="w-4 h-4 opacity-30" />
+                </button>
+              </div>
+              <div class="tooltip" data-tip="Cannot delete environment-configured libraries">
+                <button class="btn btn-sm btn-ghost join-item" disabled>
+                  <.icon name="hero-trash" class="w-4 h-4 opacity-30" />
+                </button>
+              </div>
+            <% else %>
+              <button
+                class="btn btn-sm btn-ghost join-item"
+                phx-click="edit_library_path"
+                phx-value-id={@library_path.id}
+                title="Edit"
+              >
+                <.icon name="hero-pencil" class="w-4 h-4" />
+              </button>
+              <button
+                class="btn btn-sm btn-ghost join-item text-error"
+                phx-click="delete_library_path"
+                phx-value-id={@library_path.id}
+                data-confirm="Are you sure you want to delete this library path?"
+                title="Delete"
+              >
+                <.icon name="hero-trash" class="w-4 h-4" />
+              </button>
+            <% end %>
+          </div>
+        </div>
+      </div>
     </div>
     """
   end
@@ -2278,10 +2329,28 @@ defmodule MydiaWeb.AdminConfigLive.Components do
   def library_path_modal(assigns) do
     ~H"""
     <div class="modal modal-open">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">
-          {if @library_path_mode == :new, do: "New Library Path", else: "Edit Library Path"}
-        </h3>
+      <div class="modal-box max-w-lg">
+        <%!-- Header --%>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+            <.icon
+              name={
+                if(@library_path_mode == :new, do: "hero-folder-plus", else: "hero-pencil-square")
+              }
+              class="w-5 h-5 text-primary"
+            />
+          </div>
+          <div>
+            <h3 class="font-bold text-lg">
+              {if @library_path_mode == :new, do: "Add Library Path", else: "Edit Library Path"}
+            </h3>
+            <p class="text-sm text-base-content/60">
+              {if @library_path_mode == :new,
+                do: "Configure a new directory for media storage",
+                else: "Update library path settings"}
+            </p>
+          </div>
+        </div>
 
         <.form
           for={@library_path_form}
@@ -2289,38 +2358,79 @@ defmodule MydiaWeb.AdminConfigLive.Components do
           phx-change="validate_library_path"
           phx-submit="save_library_path"
         >
-          <div class="space-y-4">
-            <.input field={@library_path_form[:path]} type="text" label="Path" required />
-            <.input
-              field={@library_path_form[:type]}
-              type="select"
-              label="Type"
-              options={[
-                {"Movies", "movies"},
-                {"TV Shows", "series"},
-                {"Mixed", "mixed"},
-                {"Music", "music"},
-                {"Books", "books"},
-                {"Adult", "adult"}
-              ]}
-              required
-            />
-            <.input
-              field={@library_path_form[:monitored]}
-              type="checkbox"
-              label="Monitored"
-              checked
-            />
+          <div class="space-y-5">
+            <%!-- Path Input --%>
+            <div>
+              <.input
+                field={@library_path_form[:path]}
+                type="text"
+                label="Directory Path"
+                placeholder="/path/to/media"
+                required
+              />
+              <p class="text-xs text-base-content/50 mt-1.5">
+                Full path to the directory containing your media files
+              </p>
+            </div>
+
+            <%!-- Type Select with Icons --%>
+            <div>
+              <.input
+                field={@library_path_form[:type]}
+                type="select"
+                label="Library Type"
+                options={[
+                  {"🎬 Movies", "movies"},
+                  {"📺 TV Shows", "series"},
+                  {"📁 Mixed Content", "mixed"},
+                  {"🎵 Music", "music"},
+                  {"📚 Books", "books"},
+                  {"🔞 Adult", "adult"}
+                ]}
+                required
+              />
+              <p class="text-xs text-base-content/50 mt-1.5">
+                Select the type of content stored in this directory
+              </p>
+            </div>
+
+            <%!-- Monitored Toggle --%>
+            <div class="form-control bg-base-200 rounded-lg p-4">
+              <label class="label cursor-pointer justify-start gap-4">
+                <input
+                  type="checkbox"
+                  name={@library_path_form[:monitored].name}
+                  value="true"
+                  checked={
+                    Phoenix.HTML.Form.normalize_value(
+                      "checkbox",
+                      @library_path_form[:monitored].value
+                    )
+                  }
+                  class="toggle toggle-primary"
+                />
+                <div>
+                  <span class="label-text font-medium">Enable Monitoring</span>
+                  <p class="text-xs text-base-content/50 mt-0.5">
+                    Automatically scan this directory for new and updated files
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
 
-          <div class="modal-action">
-            <button type="button" class="btn" phx-click="close_library_path_modal">
+          <div class="modal-action mt-6">
+            <button type="button" class="btn btn-ghost" phx-click="close_library_path_modal">
               Cancel
             </button>
-            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="submit" class="btn btn-primary gap-2">
+              <.icon name="hero-check" class="w-4 h-4" />
+              {if @library_path_mode == :new, do: "Add Library", else: "Save Changes"}
+            </button>
           </div>
         </.form>
       </div>
+      <div class="modal-backdrop" phx-click="close_library_path_modal"></div>
     </div>
     """
   end
