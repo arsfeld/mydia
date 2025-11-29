@@ -33,10 +33,17 @@ defmodule Mydia.Library.StartupSync do
 
     try do
       # 1. Always sync library paths (env vars may change between boots)
-      {:ok, synced_count} = LibraryPathSync.sync_from_runtime_config()
+      {:ok, %{synced: synced_count, disabled: disabled_count}} =
+        LibraryPathSync.sync_from_runtime_config()
 
       if synced_count > 0 do
         Logger.info("[StartupSync] Synced #{synced_count} runtime library paths to database")
+      end
+
+      if disabled_count > 0 do
+        Logger.info(
+          "[StartupSync] Disabled #{disabled_count} library paths removed from env config"
+        )
       end
 
       # 2. Quick check for files needing fix (should be 0 after initial migration)

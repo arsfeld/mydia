@@ -22,13 +22,13 @@ defmodule Mydia.Library.MigrationValidationTest do
   describe "library path sync from runtime config" do
     test "sync is idempotent - running multiple times is safe" do
       # First sync
-      {:ok, synced_count_1} = LibraryPathSync.sync_from_runtime_config()
+      {:ok, %{synced: synced_count_1}} = LibraryPathSync.sync_from_runtime_config()
       assert synced_count_1 >= 0
 
       count_after_first = Repo.aggregate(LibraryPath, :count)
 
       # Second sync - should be idempotent
-      {:ok, synced_count_2} = LibraryPathSync.sync_from_runtime_config()
+      {:ok, %{synced: synced_count_2}} = LibraryPathSync.sync_from_runtime_config()
       assert synced_count_2 >= 0
 
       count_after_second = Repo.aggregate(LibraryPath, :count)

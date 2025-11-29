@@ -19,7 +19,7 @@ defmodule Mydia.Repo.Migrations.PopulateMediaFileRelativePaths do
 
     # 1. Sync runtime library paths to database
     # This ensures all library paths from env vars/YAML are in the database
-    {:ok, synced_count} = LibraryPathSync.sync_from_runtime_config()
+    {:ok, %{synced: synced_count}} = LibraryPathSync.sync_from_runtime_config()
 
     IO.puts("""
 

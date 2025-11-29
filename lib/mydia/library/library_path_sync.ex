@@ -36,13 +36,25 @@ defmodule Mydia.Library.LibraryPathSync do
   they exist in the database. Runtime paths are upserted using the path field
   as the unique key.
 
+  Also disables library paths that were previously created from environment
+  variables but are no longer present in the config (sets monitored: false).
+
   This function is idempotent and safe to call multiple times.
 
-  Returns {:ok, synced_count} on success.
+  Returns {:ok, stats} where stats contains:
+  - synced: Number of paths synced from env
+  - disabled: Number of paths disabled (removed from env)
   """
   def sync_from_runtime_config do
     runtime_paths = Settings.get_runtime_library_paths()
 
+    runtime_path_strings =
+      runtime_paths
+      |> Enum.filter(&is_runtime_path?/1)
+      |> Enum.map(& &1.path)
+      |> MapSet.new()
+
+    # Sync runtime paths to database
     synced_count =
       runtime_paths
       |> Enum.filter(&is_runtime_path?/1)
@@ -57,7 +69,10 @@ defmodule Mydia.Library.LibraryPathSync do
         end
       end)
 
-    {:ok, synced_count}
+    # Disable env-sourced paths that are no longer in config
+    disabled_count = disable_removed_env_paths(runtime_path_strings)
+
+    {:ok, %{synced: synced_count, disabled: disabled_count}}
   end
 
   @doc """
@@ -130,12 +145,15 @@ defmodule Mydia.Library.LibraryPathSync do
 
     if existing do
       # Update existing record with runtime config values
+      # Mark as from_env and re-enable if previously disabled
       existing
       |> LibraryPath.changeset(%{
         type: runtime_path.type,
         monitored: runtime_path.monitored,
         scan_interval: runtime_path.scan_interval,
-        quality_profile_id: runtime_path.quality_profile_id
+        quality_profile_id: runtime_path.quality_profile_id,
+        from_env: true,
+        disabled: false
       })
       |> Repo.update()
     else
@@ -146,10 +164,40 @@ defmodule Mydia.Library.LibraryPathSync do
         type: runtime_path.type,
         monitored: runtime_path.monitored,
         scan_interval: runtime_path.scan_interval,
-        quality_profile_id: runtime_path.quality_profile_id
+        quality_profile_id: runtime_path.quality_profile_id,
+        from_env: true,
+        disabled: false
       })
       |> Repo.insert()
     end
+  end
+
+  # Disables library paths that were created from env vars but are no longer in config
+  defp disable_removed_env_paths(current_env_paths) do
+    # Find all library paths that:
+    # 1. Were created from environment variables (from_env: true)
+    # 2. Are not already disabled
+    # 3. Are NOT in the current env config
+    LibraryPath
+    |> where([lp], lp.from_env == true and lp.disabled == false)
+    |> Repo.all()
+    |> Enum.filter(fn lp -> not MapSet.member?(current_env_paths, lp.path) end)
+    |> Enum.reduce(0, fn library_path, count ->
+      case library_path
+           |> LibraryPath.changeset(%{disabled: true})
+           |> Repo.update() do
+        {:ok, _} ->
+          Logger.info("Disabled library path removed from env config: #{library_path.path}")
+          count + 1
+
+        {:error, changeset} ->
+          Logger.warning(
+            "Failed to disable library path #{library_path.path}: #{inspect(changeset.errors)}"
+          )
+
+          count
+      end
+    end)
   end
 
   # Populates library_path_id and relative_path for a single media file
