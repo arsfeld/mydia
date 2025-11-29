@@ -89,7 +89,8 @@ defmodule MydiaWeb.ActivityLive.Index do
 
       "media_item.updated" ->
         title = event.metadata["title"] || "Unknown"
-        "Updated: #{title}"
+        reason = event.metadata["reason"] || "Updated"
+        "#{reason}: #{title}"
 
       "media_item.removed" ->
         title = event.metadata["title"] || "Unknown"
