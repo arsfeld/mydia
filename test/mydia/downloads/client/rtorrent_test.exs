@@ -108,7 +108,9 @@ defmodule Mydia.Downloads.Client.RtorrentTest do
       unreachable_config = %{@config | host: "nonexistent.invalid", port: 9999}
       timeout_config = put_in(unreachable_config, [:options, :connect_timeout], 100)
 
-      {:error, error} = Rtorrent.get_status(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+      {:error, error} =
+        Rtorrent.get_status(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+
       assert error.type in [:connection_failed, :network_error, :timeout]
     end
   end
@@ -144,7 +146,9 @@ defmodule Mydia.Downloads.Client.RtorrentTest do
       unreachable_config = %{@config | host: "nonexistent.invalid", port: 9999}
       timeout_config = put_in(unreachable_config, [:options, :connect_timeout], 100)
 
-      {:error, error} = Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+      {:error, error} =
+        Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+
       assert error.type in [:connection_failed, :network_error, :timeout]
     end
 
@@ -152,8 +156,16 @@ defmodule Mydia.Downloads.Client.RtorrentTest do
       unreachable_config = %{@config | host: "nonexistent.invalid", port: 9999}
       timeout_config = put_in(unreachable_config, [:options, :connect_timeout], 100)
 
-      {:error, _error} = Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD", delete_files: true)
-      {:error, _error} = Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD", delete_files: false)
+      {:error, _error} =
+        Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD",
+          delete_files: true
+        )
+
+      {:error, _error} =
+        Rtorrent.remove_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD",
+          delete_files: false
+        )
+
       assert true
     end
   end
@@ -164,7 +176,9 @@ defmodule Mydia.Downloads.Client.RtorrentTest do
       unreachable_config = %{@config | host: "nonexistent.invalid", port: 9999}
       timeout_config = put_in(unreachable_config, [:options, :connect_timeout], 100)
 
-      {:error, error} = Rtorrent.pause_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+      {:error, error} =
+        Rtorrent.pause_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+
       assert error.type in [:connection_failed, :network_error, :timeout]
     end
   end
@@ -175,7 +189,9 @@ defmodule Mydia.Downloads.Client.RtorrentTest do
       unreachable_config = %{@config | host: "nonexistent.invalid", port: 9999}
       timeout_config = put_in(unreachable_config, [:options, :connect_timeout], 100)
 
-      {:error, error} = Rtorrent.resume_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+      {:error, error} =
+        Rtorrent.resume_torrent(timeout_config, "ABC123DEF456789012345678901234567890ABCD")
+
       assert error.type in [:connection_failed, :network_error, :timeout]
     end
   end

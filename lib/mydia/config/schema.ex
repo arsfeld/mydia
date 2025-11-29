@@ -79,7 +79,10 @@ defmodule Mydia.Config.Schema do
 
     embeds_many :download_clients, DownloadClient, on_replace: :delete, primary_key: false do
       field :name, :string
-      field :type, Ecto.Enum, values: [:qbittorrent, :transmission, :http, :sabnzbd, :nzbget]
+
+      field :type, Ecto.Enum,
+        values: [:qbittorrent, :transmission, :rtorrent, :http, :sabnzbd, :nzbget]
+
       field :enabled, :boolean, default: true
       field :priority, :integer, default: 1
       field :host, :string
@@ -269,7 +272,14 @@ defmodule Mydia.Config.Schema do
       :download_directory
     ])
     |> validate_required([:name, :type, :host, :port])
-    |> validate_inclusion(:type, [:qbittorrent, :transmission, :http, :sabnzbd, :nzbget])
+    |> validate_inclusion(:type, [
+      :qbittorrent,
+      :transmission,
+      :rtorrent,
+      :http,
+      :sabnzbd,
+      :nzbget
+    ])
     |> validate_number(:port, greater_than: 0, less_than: 65536)
     |> validate_number(:priority, greater_than: 0)
   end

@@ -338,6 +338,7 @@ defmodule Mydia.Downloads.Client.Rtorrent do
   end
 
   defp calculate_eta(_size, _bytes_done, 0), do: nil
+
   defp calculate_eta(size, bytes_done, rate) when rate > 0 do
     remaining = size - bytes_done
     if remaining > 0, do: div(remaining, rate), else: 0
@@ -537,8 +538,12 @@ defmodule Mydia.Downloads.Client.Rtorrent do
 
         _fault ->
           # Parse fault
-          fault_code = xpath(body, ~x"//fault/value/struct/member[name='faultCode']/value/int/text()"s)
-          fault_string = xpath(body, ~x"//fault/value/struct/member[name='faultString']/value/string/text()"s)
+          fault_code =
+            xpath(body, ~x"//fault/value/struct/member[name='faultCode']/value/int/text()"s)
+
+          fault_string =
+            xpath(body, ~x"//fault/value/struct/member[name='faultString']/value/string/text()"s)
+
           {:error, Error.api_error("XML-RPC fault: #{fault_string}", %{code: fault_code})}
       end
     rescue
@@ -624,12 +629,24 @@ defmodule Mydia.Downloads.Client.Rtorrent do
     import SweetXml
 
     cond do
-      (str = xpath(element, ~x"./string/text()"s)) != "" -> str
-      (int = xpath(element, ~x"./i4/text()"s)) != "" -> String.to_integer(int)
-      (int = xpath(element, ~x"./int/text()"s)) != "" -> String.to_integer(int)
-      (int = xpath(element, ~x"./i8/text()"s)) != "" -> String.to_integer(int)
-      (dbl = xpath(element, ~x"./double/text()"s)) != "" -> String.to_float(dbl)
-      (bool = xpath(element, ~x"./boolean/text()"s)) != "" -> bool == "1"
+      (str = xpath(element, ~x"./string/text()"s)) != "" ->
+        str
+
+      (int = xpath(element, ~x"./i4/text()"s)) != "" ->
+        String.to_integer(int)
+
+      (int = xpath(element, ~x"./int/text()"s)) != "" ->
+        String.to_integer(int)
+
+      (int = xpath(element, ~x"./i8/text()"s)) != "" ->
+        String.to_integer(int)
+
+      (dbl = xpath(element, ~x"./double/text()"s)) != "" ->
+        String.to_float(dbl)
+
+      (bool = xpath(element, ~x"./boolean/text()"s)) != "" ->
+        bool == "1"
+
       true ->
         # Try to get direct text content
         text = xpath(element, ~x"./text()"s)
@@ -681,21 +698,32 @@ defmodule Mydia.Downloads.Client.Rtorrent do
 
   defp find_dict_end(data, pos, depth) when pos < byte_size(data) do
     case :binary.at(data, pos) do
-      ?e when depth == 1 -> {:ok, pos + 1}
-      ?e -> find_dict_end(data, pos + 1, depth - 1)
-      ?d -> find_dict_end(data, pos + 1, depth + 1)
-      ?l -> find_dict_end(data, pos + 1, depth + 1)
+      ?e when depth == 1 ->
+        {:ok, pos + 1}
+
+      ?e ->
+        find_dict_end(data, pos + 1, depth - 1)
+
+      ?d ->
+        find_dict_end(data, pos + 1, depth + 1)
+
+      ?l ->
+        find_dict_end(data, pos + 1, depth + 1)
+
       ?i ->
         case find_int_end(data, pos + 1) do
           {:ok, new_pos} -> find_dict_end(data, new_pos, depth)
           error -> error
         end
+
       c when c >= ?0 and c <= ?9 ->
         case find_string_end(data, pos) do
           {:ok, new_pos} -> find_dict_end(data, new_pos, depth)
           error -> error
         end
-      _ -> {:error, "Invalid bencode in dictionary at position #{pos}"}
+
+      _ ->
+        {:error, "Invalid bencode in dictionary at position #{pos}"}
     end
   end
 
@@ -703,21 +731,32 @@ defmodule Mydia.Downloads.Client.Rtorrent do
 
   defp find_list_end(data, pos, depth) when pos < byte_size(data) do
     case :binary.at(data, pos) do
-      ?e when depth == 1 -> {:ok, pos + 1}
-      ?e -> find_list_end(data, pos + 1, depth - 1)
-      ?d -> find_list_end(data, pos + 1, depth + 1)
-      ?l -> find_list_end(data, pos + 1, depth + 1)
+      ?e when depth == 1 ->
+        {:ok, pos + 1}
+
+      ?e ->
+        find_list_end(data, pos + 1, depth - 1)
+
+      ?d ->
+        find_list_end(data, pos + 1, depth + 1)
+
+      ?l ->
+        find_list_end(data, pos + 1, depth + 1)
+
       ?i ->
         case find_int_end(data, pos + 1) do
           {:ok, new_pos} -> find_list_end(data, new_pos, depth)
           error -> error
         end
+
       c when c >= ?0 and c <= ?9 ->
         case find_string_end(data, pos) do
           {:ok, new_pos} -> find_list_end(data, new_pos, depth)
           error -> error
         end
-      _ -> {:error, "Invalid bencode in list at position #{pos}"}
+
+      _ ->
+        {:error, "Invalid bencode in list at position #{pos}"}
     end
   end
 
