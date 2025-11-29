@@ -535,9 +535,10 @@ defmodule Mydia.Downloads do
         media_item_id ->
           where(base_query, [d], d.media_item_id == ^media_item_id)
 
-        # No media association, can't check for duplicates
+        # No media association (e.g., music, books, adult libraries)
+        # Check by download_url to prevent downloading the same file twice
         true ->
-          base_query
+          where(base_query, [d], d.download_url == ^search_result.download_url)
       end
 
     case Repo.exists?(query) do
