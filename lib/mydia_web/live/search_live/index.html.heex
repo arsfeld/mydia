@@ -348,13 +348,19 @@
                       </button>
                     </div>
                   <% else %>
+                    <% is_downloading = MapSet.member?(@downloading_urls, result.download_url) %>
                     <button
                       class="btn btn-sm btn-primary"
                       phx-click="show_download_modal"
                       phx-value-download_url={result.download_url}
                       title="Download to library"
+                      disabled={is_downloading}
                     >
-                      <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
+                      <%= if is_downloading do %>
+                        <span class="loading loading-spinner loading-sm"></span>
+                      <% else %>
+                        <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
+                      <% end %>
                     </button>
                   <% end %>
                 </td>
@@ -371,6 +377,7 @@
       id="disambiguation-modal"
       show={@show_disambiguation_modal}
       matches={@metadata_matches}
+      selecting_match_id={@selecting_match_id}
       on_select="select_metadata_match"
       on_cancel="close_disambiguation_modal"
     />
@@ -383,6 +390,7 @@
       failed_title={@failed_release_title}
       search_query={@manual_search_query}
       matches={@metadata_matches}
+      selecting_match_id={@selecting_match_id}
       on_search="manual_search_submit"
       on_select="select_manual_match"
       on_cancel="close_manual_search_modal"
@@ -593,56 +601,62 @@
             </div>
           <% end %>
 
-          <%!-- Library type selector --%>
+          <%!-- Library type selector - only show types with configured libraries --%>
           <div class="form-control mb-4">
             <label class="label">
               <span class="label-text font-semibold">Download to library type</span>
             </label>
-            <div class="grid grid-cols-2 gap-2">
-              <%= for {type, label} <- [{:movies, "Movies"}, {:series, "TV Series"}, {:music, "Music"}, {:books, "Books"}, {:adult, "Adult"}] do %>
-                <button
-                  type="button"
-                  class={[
-                    "btn btn-outline gap-2",
-                    @download_target_type == type && "btn-active btn-primary"
-                  ]}
-                  phx-click="set_download_target_type"
-                  phx-value-type={type}
-                >
-                  <.icon name={library_type_icon(type)} class="w-4 h-4" />
-                  {label}
-                </button>
-              <% end %>
-            </div>
-            <label class="label">
-              <span class="label-text-alt text-base-content/60">
-                <%= cond do %>
-                  <% @download_target_type in [:movies, :series] -> %>
-                    Will search metadata providers to match title
-                  <% @download_target_type in [:music, :books, :adult] -> %>
-                    Will download directly without metadata lookup
-                  <% true -> %>
-                    Select a library type to continue
-                <% end %>
-              </span>
-            </label>
-          </div>
-
-          <%!-- Check if library path exists for selected type --%>
-          <%= if @download_target_type in [:music, :books, :adult] do %>
-            <% library_path_exists =
-              Enum.any?(@library_paths, &(&1.type == @download_target_type)) %>
-            <%= unless library_path_exists do %>
-              <div role="alert" class="alert alert-warning mb-4">
+            <% available_types =
+              [
+                {:movies, "Movies"},
+                {:series, "TV Series"},
+                {:music, "Music"},
+                {:books, "Books"},
+                {:adult, "Adult"}
+              ]
+              |> Enum.filter(fn {type, _label} ->
+                MapSet.member?(@configured_library_types, type)
+              end) %>
+            <%= if available_types == [] do %>
+              <div role="alert" class="alert alert-warning">
                 <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
                 <span class="text-sm">
-                  No library path configured for {library_type_label(@download_target_type)}.
-                  <a href="/admin/config" class="link link-primary">Configure one</a>
-                  before downloading.
+                  No library paths configured.
+                  <a href="/admin/config" class="link link-primary">Configure library paths</a>
+                  to enable downloads.
                 </span>
               </div>
+            <% else %>
+              <div class="grid grid-cols-2 gap-2">
+                <%= for {type, label} <- available_types do %>
+                  <button
+                    type="button"
+                    class={[
+                      "btn btn-outline gap-2",
+                      @download_target_type == type && "btn-active btn-primary"
+                    ]}
+                    phx-click="set_download_target_type"
+                    phx-value-type={type}
+                  >
+                    <.icon name={library_type_icon(type)} class="w-4 h-4" />
+                    {label}
+                  </button>
+                <% end %>
+              </div>
+              <label class="label">
+                <span class="label-text-alt text-base-content/60">
+                  <%= cond do %>
+                    <% @download_target_type in [:movies, :series] -> %>
+                      Will search metadata providers to match title
+                    <% @download_target_type in [:music, :books, :adult] -> %>
+                      Will download directly without metadata lookup
+                    <% true -> %>
+                      Select a library type to continue
+                  <% end %>
+                </span>
+              </label>
             <% end %>
-          <% end %>
+          </div>
 
           <%!-- Actions --%>
           <div class="modal-action">
@@ -659,12 +673,7 @@
                 (@confirming_download || is_nil(@download_target_type)) && "btn-disabled"
               ]}
               phx-click="confirm_download"
-              disabled={
-                @confirming_download ||
-                  is_nil(@download_target_type) ||
-                  (@download_target_type in [:music, :books, :adult] &&
-                     not Enum.any?(@library_paths, &(&1.type == @download_target_type)))
-              }
+              disabled={@confirming_download || is_nil(@download_target_type)}
             >
               <%= if @confirming_download do %>
                 <span class="loading loading-spinner loading-sm"></span> Adding...

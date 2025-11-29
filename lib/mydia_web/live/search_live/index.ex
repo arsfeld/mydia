@@ -79,6 +79,7 @@ defmodule MydiaWeb.SearchLive.Index do
      |> assign(:show_manual_search_modal, false)
      |> assign(:manual_search_query, "")
      |> assign(:failed_release_title, nil)
+     |> assign(:selecting_match_id, nil)
      |> assign(:show_retry_modal, false)
      |> assign(:retry_error_message, nil)
      |> assign(:search_results_map, %{})
@@ -88,6 +89,7 @@ defmodule MydiaWeb.SearchLive.Index do
      |> assign(:download_modal_result, nil)
      |> assign(:download_target_type, nil)
      |> assign(:confirming_download, false)
+     |> assign(:downloading_urls, MapSet.new())
      |> assign(:library_paths, library_paths)
      |> assign(:available_indexers, available_indexers)
      |> assign(:selected_indexer_ids, selected_indexer_ids)
@@ -267,7 +269,8 @@ defmodule MydiaWeb.SearchLive.Index do
 
       {:noreply,
        socket
-       |> assign(:show_disambiguation_modal, false)
+       # Keep modal open but show loading state on selected match
+       |> assign(:selecting_match_id, match_id)
        |> start_async(:finalize_add_to_library, fn ->
          config = Metadata.default_relay_config()
 
@@ -325,7 +328,8 @@ defmodule MydiaWeb.SearchLive.Index do
 
       {:noreply,
        socket
-       |> assign(:show_manual_search_modal, false)
+       # Keep modal open but show loading state on selected match
+       |> assign(:selecting_match_id, match_id)
        |> start_async(:finalize_manual_add, fn ->
          config = Metadata.default_relay_config()
 
@@ -397,15 +401,53 @@ defmodule MydiaWeb.SearchLive.Index do
         nil
       end
 
-    {:noreply,
-     socket
-     # Close detail modal if it's open
-     |> assign(:show_detail_modal, false)
-     |> assign(:selected_result, nil)
-     # Open download modal
-     |> assign(:show_download_modal, true)
-     |> assign(:download_modal_result, search_result)
-     |> assign(:download_target_type, detected_type)}
+    # If type is detected, skip the modal and proceed directly to download
+    if detected_type do
+      Logger.info(
+        "Auto-detected type #{detected_type}, skipping modal for: #{search_result.title}"
+      )
+
+      # Track this URL as downloading (for loading indicator)
+      downloading_urls = MapSet.put(socket.assigns.downloading_urls, download_url)
+
+      socket =
+        socket
+        |> assign(:show_detail_modal, false)
+        |> assign(:selected_result, nil)
+        |> assign(:download_modal_result, search_result)
+        |> assign(:download_target_type, detected_type)
+        |> assign(:confirming_download, true)
+        |> assign(:downloading_urls, downloading_urls)
+        |> assign(:pending_release_title, search_result.title)
+        |> assign(:pending_search_result, search_result)
+        |> assign(:should_download_after_add, true)
+        # Re-insert result into stream to trigger UI update for loading state
+        |> stream_insert(:search_results, search_result)
+
+      # Use appropriate download flow based on type
+      socket =
+        if detected_type in [:movies, :series] do
+          start_async(socket, :add_to_library, fn ->
+            add_release_to_library(search_result.title)
+          end)
+        else
+          start_async(socket, :direct_download, fn ->
+            direct_download_to_library(search_result, detected_type)
+          end)
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       # Close detail modal if it's open
+       |> assign(:show_detail_modal, false)
+       |> assign(:selected_result, nil)
+       # Open download modal
+       |> assign(:show_download_modal, true)
+       |> assign(:download_modal_result, search_result)
+       |> assign(:download_target_type, detected_type)}
+    end
   end
 
   def handle_event("close_download_modal", _params, socket) do
@@ -425,8 +467,15 @@ defmodule MydiaWeb.SearchLive.Index do
     if search_result do
       Logger.info("Confirming download for: #{search_result.title}, target type: #{target_type}")
 
-      # Set loading state - modal will be closed when async completes
-      socket = assign(socket, :confirming_download, true)
+      # Track this URL as downloading and set loading state
+      downloading_urls = MapSet.put(socket.assigns.downloading_urls, search_result.download_url)
+
+      socket =
+        socket
+        |> assign(:confirming_download, true)
+        |> assign(:downloading_urls, downloading_urls)
+        # Re-insert result into stream to trigger UI update for loading state
+        |> stream_insert(:search_results, search_result)
 
       # Use the target type to determine the download flow
       case target_type do
@@ -633,13 +682,14 @@ defmodule MydiaWeb.SearchLive.Index do
              media_item.title}
           )
 
-          put_flash(socket, :info, "#{media_item.title} added to library")
+          socket
         else
           put_flash(socket, :info, "#{media_item.title} added to library")
         end
       end)
 
-    {:noreply, push_navigate(socket, to: ~p"/media/#{media_item.id}")}
+    # Stay on search page so user can download more items
+    {:noreply, socket}
   end
 
   def handle_async(:add_to_library, {:ok, {:error, reason}}, socket) do
@@ -695,37 +745,46 @@ defmodule MydiaWeb.SearchLive.Index do
     Logger.info("Successfully added #{media_item.title} to library after disambiguation")
 
     socket =
-      if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
-        Logger.info("Triggering download for #{media_item.title}")
+      socket
+      |> assign(:show_disambiguation_modal, false)
+      |> assign(:selecting_match_id, nil)
+      |> close_download_modal()
+      |> then(fn socket ->
+        if socket.assigns.should_download_after_add && socket.assigns.pending_search_result do
+          Logger.info("Triggering download for #{media_item.title}")
 
-        send(
-          self(),
-          {:trigger_download, socket.assigns.pending_search_result, media_item.id,
-           media_item.title}
-        )
+          send(
+            self(),
+            {:trigger_download, socket.assigns.pending_search_result, media_item.id,
+             media_item.title}
+          )
 
-        socket
-        |> put_flash(:info, "#{media_item.title} added to library")
-      else
-        socket
-        |> put_flash(:info, "#{media_item.title} added to library")
-      end
+          socket
+        else
+          put_flash(socket, :info, "#{media_item.title} added to library")
+        end
+      end)
 
-    {:noreply,
-     socket
-     |> push_navigate(to: ~p"/media/#{media_item.id}")}
+    # Stay on search page so user can download more items
+    {:noreply, socket}
   end
 
   def handle_async(:finalize_add_to_library, {:ok, {:error, reason}}, socket) do
     Logger.error("Failed to add to library after disambiguation: #{inspect(reason)}")
 
-    {:noreply, put_flash(socket, :error, "Failed to add to library: #{inspect(reason)}")}
+    {:noreply,
+     socket
+     |> assign(:selecting_match_id, nil)
+     |> put_flash(:error, "Failed to add to library: #{inspect(reason)}")}
   end
 
   def handle_async(:finalize_add_to_library, {:exit, reason}, socket) do
     Logger.error("Finalize add to library task crashed: #{inspect(reason)}")
 
-    {:noreply, put_flash(socket, :error, "Failed to add to library unexpectedly")}
+    {:noreply,
+     socket
+     |> assign(:selecting_match_id, nil)
+     |> put_flash(:error, "Failed to add to library unexpectedly")}
   end
 
   def handle_async(:manual_metadata_search, {:ok, {:ok, results}}, socket) do
@@ -745,27 +804,33 @@ defmodule MydiaWeb.SearchLive.Index do
   def handle_async(:finalize_manual_add, {:ok, {:ok, media_item}}, socket) do
     Logger.info("Successfully added #{media_item.title} to library via manual search")
 
+    # Stay on search page so user can download more items
     {:noreply,
      socket
-     |> put_flash(:info, "#{media_item.title} added to library")
-     |> push_navigate(to: ~p"/media/#{media_item.id}")}
+     |> assign(:show_manual_search_modal, false)
+     |> assign(:selecting_match_id, nil)
+     |> close_download_modal()
+     |> put_flash(:info, "#{media_item.title} added to library")}
   end
 
   def handle_async(:finalize_manual_add, {:ok, {:error, reason}}, socket) do
     Logger.error("Failed to add to library via manual search: #{inspect(reason)}")
 
-    {:noreply, put_flash(socket, :error, "Failed to add to library: #{inspect(reason)}")}
+    {:noreply,
+     socket
+     |> assign(:selecting_match_id, nil)
+     |> put_flash(:error, "Failed to add to library: #{inspect(reason)}")}
   end
 
   # Handle direct download async results (for specialized libraries)
   def handle_async(:direct_download, {:ok, {:ok, download}}, socket) do
     Logger.info("Direct download started successfully: #{download.title}")
 
+    # Stay on search page so user can download more items
     {:noreply,
      socket
      |> close_download_modal()
-     |> put_flash(:info, "Download started: #{download.title}")
-     |> push_navigate(to: ~p"/downloads")}
+     |> put_flash(:info, "Download started: #{download.title}. View in Downloads queue.")}
   end
 
   def handle_async(:direct_download, {:ok, {:error, reason}}, socket) do
@@ -796,11 +861,24 @@ defmodule MydiaWeb.SearchLive.Index do
   ## Private Functions
 
   defp close_download_modal(socket) do
+    # Clear the downloading URL if there was one and re-insert result to update UI
+    {downloading_urls, socket} =
+      if socket.assigns.pending_search_result do
+        search_result = socket.assigns.pending_search_result
+        urls = MapSet.delete(socket.assigns.downloading_urls, search_result.download_url)
+        # Re-insert result into stream to trigger UI update (clear loading state)
+        socket = stream_insert(socket, :search_results, search_result)
+        {urls, socket}
+      else
+        {socket.assigns.downloading_urls, socket}
+      end
+
     socket
     |> assign(:show_download_modal, false)
     |> assign(:download_modal_result, nil)
     |> assign(:download_target_type, nil)
     |> assign(:confirming_download, false)
+    |> assign(:downloading_urls, downloading_urls)
   end
 
   defp generate_result_id(%SearchResult{} = result) do
