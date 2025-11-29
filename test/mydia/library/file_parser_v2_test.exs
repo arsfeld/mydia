@@ -135,6 +135,25 @@ defmodule Mydia.Library.FileParser.V2Test do
       assert result.episodes == [12]
     end
 
+    test "parses S01 E01 format with space between season and episode" do
+      result = FileParser.parse("Show Name S01 E05 720p.mkv")
+
+      assert result.type == :tv_show
+      assert result.title == "Show Name"
+      assert result.season == 1
+      assert result.episodes == [5]
+      assert result.quality.resolution == "720p"
+    end
+
+    test "parses S01-E01 format with hyphen between season and episode" do
+      result = FileParser.parse("Show.Name.S02-E10.1080p.mkv")
+
+      assert result.type == :tv_show
+      assert result.title == "Show Name"
+      assert result.season == 2
+      assert result.episodes == [10]
+    end
+
     test "parses multi-episode format S01E01-E03" do
       result = FileParser.parse("Show.Name.S01E01-E03.1080p.mkv")
 
@@ -338,6 +357,16 @@ defmodule Mydia.Library.FileParser.V2Test do
 
       assert result.title == "Movie Title"
       assert result.year == 2020
+    end
+
+    test "handles malformed TV pattern with non-numeric episode gracefully" do
+      # Files with patterns like "S1E1E" should not crash the parser
+      # Previously this would raise an ArgumentError when trying to parse "1E" as integer
+      result = FileParser.parse("Show Name S1E1E Something 720p.mkv")
+
+      # Should not crash, parser should treat this as unknown or movie since TV pattern fails
+      assert is_map(result)
+      assert is_atom(result.type)
     end
   end
 

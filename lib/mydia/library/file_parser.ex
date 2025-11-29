@@ -102,8 +102,8 @@ defmodule Mydia.Library.FileParser do
   # TV show patterns
   defp tv_patterns do
     [
-      # S01E01 or s01e01, with optional multi-episode S01E01-E03 or S01E01E03
-      ~r/[. _-]S(\d{1,2})E(\d{1,2})(?:-?E(\d{1,2}))?/i,
+      # S01E01 or s01e01, with optional separator (S01 E01), and optional multi-episode S01E01-E03 or S01E01E03
+      ~r/[. _-]S(\d{1,2})[. _-]?E(\d{1,2})(?:[. _-]?E(\d{1,2}))?/i,
       # 1x01
       ~r/[. _-](\d{1,2})x(\d{1,2})/i,
       # Season 1 Episode 1 (verbose)

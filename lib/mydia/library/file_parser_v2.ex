@@ -129,8 +129,8 @@ defmodule Mydia.Library.FileParser.V2 do
   # TV show patterns - defined as function to avoid module attribute issues
   defp tv_patterns do
     [
-      # S01E01 or s01e01, with optional multi-episode S01E01-E03 or S01E01E03
-      ~r/[. _-]S(\d{1,2})E(\d{1,2})(?:-?E(\d{1,2}))?/i,
+      # S01E01 or s01e01, with optional separator (S01 E01), and optional multi-episode S01E01-E03 or S01E01E03
+      ~r/[. _-]S(\d{1,2})[. _-]?E(\d{1,2})(?:[. _-]?E(\d{1,2}))?/i,
       # 1x01
       ~r/[. _-](\d{1,2})x(\d{1,2})/i,
       # Season 1 Episode 1 (verbose)
@@ -620,14 +620,20 @@ defmodule Mydia.Library.FileParser.V2 do
       |> Enum.map(fn {start, length} ->
         text
         |> String.slice(start, length)
-        |> String.to_integer()
+        |> Integer.parse()
+      end)
+      |> Enum.map(fn
+        {num, ""} -> num
+        {num, _rest} -> num
+        :error -> nil
       end)
 
     case numbers do
-      [season, episode] ->
+      [season, episode] when is_integer(season) and is_integer(episode) ->
         {season, [episode]}
 
-      [season, episode1, episode2] ->
+      [season, episode1, episode2]
+      when is_integer(season) and is_integer(episode1) and is_integer(episode2) ->
         # Multi-episode (e.g., S01E01-E03)
         {season, Enum.to_list(episode1..episode2)}
 

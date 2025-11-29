@@ -134,6 +134,25 @@ defmodule Mydia.Library.FileParserTest do
       assert result.episodes == [12]
     end
 
+    test "parses S01 E01 format with space between season and episode" do
+      result = FileParser.parse("Show Name S01 E05 720p.mkv")
+
+      assert result.type == :tv_show
+      assert result.title == "Show Name"
+      assert result.season == 1
+      assert result.episodes == [5]
+      assert result.quality.resolution == "720p"
+    end
+
+    test "parses S01-E01 format with hyphen between season and episode" do
+      result = FileParser.parse("Show.Name.S02-E10.1080p.mkv")
+
+      assert result.type == :tv_show
+      assert result.title == "Show Name"
+      assert result.season == 2
+      assert result.episodes == [10]
+    end
+
     test "parses multi-episode format S01E01-E03" do
       result = FileParser.parse("Show.Name.S01E01-E03.1080p.mkv")
 
