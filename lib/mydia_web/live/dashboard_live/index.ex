@@ -1,6 +1,8 @@
 defmodule MydiaWeb.DashboardLive.Index do
   use MydiaWeb, :live_view
   alias Mydia.Media
+  alias Mydia.Library
+  alias Mydia.Downloads
   alias Mydia.Metadata
   alias Mydia.MediaRequests
   alias Mydia.Accounts.Authorization
@@ -27,6 +29,8 @@ defmodule MydiaWeb.DashboardLive.Index do
         |> assign(:trending_tv, [])
         |> assign(:movie_count, 0)
         |> assign(:tv_show_count, 0)
+        |> assign(:active_downloads_count, 0)
+        |> assign(:total_storage, "0 GB")
         |> assign(:recent_episodes, [])
         |> assign(:upcoming_episodes, [])
         |> assign(:library_status_map, %{})
@@ -48,6 +52,8 @@ defmodule MydiaWeb.DashboardLive.Index do
     # Load basic stats
     movie_count = Media.count_movies()
     tv_show_count = Media.count_tv_shows()
+    active_downloads_count = Downloads.count_active_downloads()
+    total_storage = Library.total_storage_bytes() |> format_bytes()
 
     # Load library status map for efficient lookups
     library_status_map = Media.get_library_status_map()
@@ -75,6 +81,8 @@ defmodule MydiaWeb.DashboardLive.Index do
     socket
     |> assign(:movie_count, movie_count)
     |> assign(:tv_show_count, tv_show_count)
+    |> assign(:active_downloads_count, active_downloads_count)
+    |> assign(:total_storage, total_storage)
     |> assign(:library_status_map, library_status_map)
     |> assign(:recent_episodes, Enum.take(recent_episodes, 10))
     |> assign(:upcoming_episodes, Enum.take(upcoming_episodes, 10))
@@ -327,5 +335,27 @@ defmodule MydiaWeb.DashboardLive.Index do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)
     |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
     |> Enum.join("; ")
+  end
+
+  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
+
+  defp format_bytes(bytes) when bytes < 1024 * 1024 do
+    kb = bytes / 1024
+    "#{Float.round(kb, 1)} KB"
+  end
+
+  defp format_bytes(bytes) when bytes < 1024 * 1024 * 1024 do
+    mb = bytes / (1024 * 1024)
+    "#{Float.round(mb, 1)} MB"
+  end
+
+  defp format_bytes(bytes) when bytes < 1024 * 1024 * 1024 * 1024 do
+    gb = bytes / (1024 * 1024 * 1024)
+    "#{Float.round(gb, 1)} GB"
+  end
+
+  defp format_bytes(bytes) do
+    tb = bytes / (1024 * 1024 * 1024 * 1024)
+    "#{Float.round(tb, 2)} TB"
   end
 end

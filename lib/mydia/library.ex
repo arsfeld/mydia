@@ -11,6 +11,16 @@ defmodule Mydia.Library do
   require Logger
 
   @doc """
+  Returns the total storage used by all media files in bytes.
+  """
+  def total_storage_bytes do
+    MediaFile
+    |> select([f], sum(f.size))
+    |> Repo.one()
+    |> Kernel.||(0)
+  end
+
+  @doc """
   Returns the list of media files.
 
   ## Options
