@@ -284,6 +284,11 @@ defmodule Mydia.DownloadsTest do
           # (e.g., transmission rejecting an invalid magnet link)
           assert true
 
+        {:error, {:client_error, %Error{type: :invalid_torrent}}} ->
+          # This can happen if runtime clients exist but they reject the torrent
+          # (e.g., client unable to extract hash from invalid magnet link)
+          assert true
+
         other ->
           flunk("Expected error, got: #{inspect(other)}")
       end
