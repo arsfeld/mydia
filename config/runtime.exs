@@ -280,6 +280,7 @@ oidc_issuer =
 
 oidc_client_id = System.get_env("OIDC_CLIENT_ID")
 oidc_client_secret = System.get_env("OIDC_CLIENT_SECRET")
+oidc_redirect_uri = System.get_env("OIDC_REDIRECT_URI")
 
 if oidc_issuer && oidc_client_id && oidc_client_secret do
   # Only log OIDC configuration in non-CLI mode
@@ -290,6 +291,7 @@ if oidc_issuer && oidc_client_id && oidc_client_secret do
     Logger.info("Configuring Ueberauth with OIDC for production")
     Logger.info("Issuer: #{oidc_issuer}")
     Logger.info("Client ID: #{oidc_client_id}")
+    Logger.info("Redirect URI: #{oidc_redirect_uri || "(auto-generated)"}")
   end
 
   # Configure oidcc library settings
@@ -301,24 +303,33 @@ if oidc_issuer && oidc_client_id && oidc_client_secret do
   ]
 
   # Step 2: Configure Ueberauth provider with optimal compatibility settings
+  # Build the base OIDC options
+  oidc_opts = [
+    issuer: :default_issuer,
+    client_id: oidc_client_id,
+    client_secret: oidc_client_secret,
+    scopes: ["openid", "profile", "email"],
+    callback_path: "/auth/oidc/callback",
+    userinfo: true,
+    uid_field: "sub",
+    # Use standard OAuth2 auth methods for maximum compatibility
+    # Works with all OIDC providers without requiring special client configuration
+    preferred_auth_methods: [:client_secret_post, :client_secret_basic],
+    # Use standard OAuth2 response mode (universally supported)
+    response_mode: "query"
+  ]
+
+  # Add redirect_uri if configured (required by ueberauth_oidcc)
+  oidc_opts =
+    if oidc_redirect_uri do
+      Keyword.put(oidc_opts, :redirect_uri, oidc_redirect_uri)
+    else
+      oidc_opts
+    end
+
   config :ueberauth, Ueberauth,
     providers: [
-      oidc:
-        {Ueberauth.Strategy.Oidcc,
-         [
-           issuer: :default_issuer,
-           client_id: oidc_client_id,
-           client_secret: oidc_client_secret,
-           scopes: ["openid", "profile", "email"],
-           callback_path: "/auth/oidc/callback",
-           userinfo: true,
-           uid_field: "sub",
-           # Use standard OAuth2 auth methods for maximum compatibility
-           # Works with all OIDC providers without requiring special client configuration
-           preferred_auth_methods: [:client_secret_post, :client_secret_basic],
-           # Use standard OAuth2 response mode (universally supported)
-           response_mode: "query"
-         ]}
+      oidc: {Ueberauth.Strategy.Oidcc, oidc_opts}
     ]
 
   unless cli_mode?, do: Logger.info("Ueberauth OIDC configured successfully!")
