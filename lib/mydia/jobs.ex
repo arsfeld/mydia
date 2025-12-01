@@ -167,6 +167,36 @@ defmodule Mydia.Jobs do
   end
 
   @doc """
+  Lists currently executing jobs.
+
+  Returns a list of jobs that are currently in the "executing" state,
+  useful for displaying active job status in the UI.
+  """
+  def list_executing_jobs do
+    from(j in Job,
+      where: j.state == "executing",
+      order_by: [asc: j.attempted_at],
+      select: %{
+        id: j.id,
+        worker: j.worker,
+        attempted_at: j.attempted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(fn job ->
+      Map.put(job, :worker_name, worker_display_name_from_string(job.worker))
+    end)
+  end
+
+  @doc """
+  Counts currently executing jobs.
+  """
+  def count_executing_jobs do
+    from(j in Job, where: j.state == "executing")
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
   Counts total jobs in history for pagination.
   """
   def count_job_history(opts \\ []) do
@@ -219,6 +249,13 @@ defmodule Mydia.Jobs do
   defp worker_display_name(worker) when is_atom(worker) do
     worker
     |> Module.split()
+    |> List.last()
+    |> humanize_name()
+  end
+
+  defp worker_display_name_from_string(worker_string) when is_binary(worker_string) do
+    worker_string
+    |> String.split(".")
     |> List.last()
     |> humanize_name()
   end

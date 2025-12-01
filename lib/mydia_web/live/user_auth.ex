@@ -78,6 +78,11 @@ defmodule MydiaWeb.Live.UserAuth do
   end
 
   def on_mount(:load_navigation_data, _params, _session, socket) do
+    # Subscribe to job status updates for real-time sidebar indicator
+    if connected?(socket) do
+      Mydia.Jobs.Broadcaster.subscribe()
+    end
+
     # Load navigation counts once per LiveView mount
     # These are used by the layout component for sidebar badges
     pending_requests_count =
@@ -120,6 +125,9 @@ defmodule MydiaWeb.Live.UserAuth do
         0
       end
 
+    # Get executing jobs for sidebar status indicator
+    executing_jobs = Mydia.Jobs.list_executing_jobs()
+
     socket =
       socket
       |> assign(:movie_count, Mydia.Media.count_movies())
@@ -130,7 +138,18 @@ defmodule MydiaWeb.Live.UserAuth do
       |> assign(:adult_count, adult_count)
       |> assign(:music_count, music_count)
       |> assign(:books_count, books_count)
+      |> assign(:executing_jobs, executing_jobs)
+      |> attach_hook(:jobs_status_hook, :handle_info, &handle_jobs_status/2)
 
+    {:cont, socket}
+  end
+
+  # Handle job status updates from PubSub
+  defp handle_jobs_status({:jobs_status_changed, executing_jobs}, socket) do
+    {:halt, assign(socket, :executing_jobs, executing_jobs)}
+  end
+
+  defp handle_jobs_status(_msg, socket) do
     {:cont, socket}
   end
 

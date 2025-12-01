@@ -48,6 +48,7 @@ defmodule MydiaWeb.Layouts do
   attr :adult_count, :integer, default: 0, doc: "number of adult items in library"
   attr :music_count, :integer, default: 0, doc: "number of music albums in library"
   attr :books_count, :integer, default: 0, doc: "number of books in library"
+  attr :executing_jobs, :list, default: [], doc: "list of currently executing background jobs"
 
   slot :inner_block, required: true
 
@@ -221,6 +222,27 @@ defmodule MydiaWeb.Layouts do
               <% end %>
             </ul>
           </nav>
+          
+    <!-- Running jobs status -->
+          <%= if @executing_jobs != [] do %>
+            <div class="px-4 py-2 border-t border-base-content/10">
+              <div class="bg-base-200 rounded-lg p-2">
+                <div class="flex items-center gap-2 text-sm font-medium mb-1">
+                  <span class="loading loading-spinner loading-xs text-primary"></span>
+                  <span>Running Jobs</span>
+                  <span class="badge badge-primary badge-xs">{length(@executing_jobs)}</span>
+                </div>
+                <ul class="text-xs opacity-70 space-y-0.5 pl-5">
+                  <%= for job <- Enum.take(@executing_jobs, 3) do %>
+                    <li class="truncate">{job.worker_name}</li>
+                  <% end %>
+                  <%= if length(@executing_jobs) > 3 do %>
+                    <li class="text-primary">+{length(@executing_jobs) - 3} more...</li>
+                  <% end %>
+                </ul>
+              </div>
+            </div>
+          <% end %>
           
     <!-- User menu at bottom -->
           <div class="p-4 border-t border-base-300">
