@@ -677,6 +677,55 @@ mix phx.server
 
 Visit [localhost:4000](http://localhost:4000)
 
+**With Nix:**
+
+```bash
+# Enter development shell
+nix develop
+
+# First-time setup
+mix deps.get
+mix ecto.setup
+
+# Start server
+mix phx.server
+```
+
+The Nix development shell provides Elixir, Erlang, Node.js, SQLite, FFmpeg, and all required build tools.
+
+See [docs/nix.md](docs/nix.md) for full Nix development and NixOS deployment documentation.
+
+### NixOS Deployment
+
+Mydia provides a NixOS module for declarative deployment:
+
+```nix
+# flake.nix
+{
+  inputs.mydia.url = "github:getmydia/mydia";
+
+  outputs = { self, nixpkgs, mydia }: {
+    nixosConfigurations.myserver = nixpkgs.lib.nixosSystem {
+      modules = [ mydia.nixosModules.default ./configuration.nix ];
+    };
+  };
+}
+
+# configuration.nix
+{
+  services.mydia = {
+    enable = true;
+    host = "mydia.example.com";
+    secretKeyBaseFile = "/run/secrets/mydia/secret_key_base";
+    mediaLibraries = [ "/mnt/media/movies" "/mnt/media/tv" ];
+  };
+}
+```
+
+The module supports OIDC authentication, download clients, FlareSolverr, and systemd security hardening.
+
+See [docs/nix.md](docs/nix.md) for complete configuration options and examples.
+
 ### Continuous Integration
 
 All pull requests and commits to the main branch automatically run:
