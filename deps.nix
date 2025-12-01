@@ -1,4 +1,4 @@
-{ lib, beamPackages, overrides ? (x: y: {}), fetchFromGitHub }:
+{ lib, beamPackages, pkgs ? null, overrides ? (x: y: {}) }:
 
 let
   buildRebar3 = lib.makeOverridable beamPackages.buildRebar3;
@@ -8,18 +8,10 @@ let
   self = packages // (overrides self packages);
 
   packages = with beamPackages; with self; {
-    # Git dependency - heroicons (non-Elixir, just SVG assets)
-    # Used by Phoenix's icon component for SVG icons
-    heroicons = {
-      name = "heroicons";
-      version = "2.2.0";
-      src = fetchFromGitHub {
-        owner = "tailwindlabs";
-        repo = "heroicons";
-        rev = "v2.2.0";
-        hash = "sha256-Jcxr1fSbmXO9bZKeg39Z/zVN0YJp17TX3LH5Us4lsZU=";
-      };
-    };
+    # NOTE: heroicons is a git dependency but NOT an Elixir package (app: false, compile: false)
+    # It's handled separately during the build by fetching from GitHub
+    # See flake.nix for how it's fetched and placed in deps/heroicons
+
     argon2_elixir = buildMix rec {
       name = "argon2_elixir";
       version = "4.1.3";
@@ -30,6 +22,7 @@ let
         sha256 = "7c295b8d8e0eaf6f43641698f962526cdf87c6feb7d14bd21e599271b510608c";
       };
 
+      HOME = ".";
       beamDeps = [ comeonin elixir_make ];
     };
 
@@ -56,6 +49,7 @@ let
         sha256 = "471be5151874ae7931911057d1467d908955f93554f7a6cd1b7d804cac8cef53";
       };
 
+      HOME = ".";
       beamDeps = [ comeonin elixir_make ];
     };
 
@@ -147,6 +141,7 @@ let
         sha256 = "3427232caf0835f94680e5bcf082408a70b48ad68a5f5c0b02a3bea9f3a075b9";
       };
 
+      HOME = ".";
       beamDeps = [ elixir_make ];
     };
 
@@ -485,6 +480,7 @@ let
         sha256 = "b3db0c9ae6e5ee7cf84dd0a1b6dc7566b80912eb7746d45370f5666ed66700f9";
       };
 
+      HOME = ".";
       beamDeps = [ cc_precompiler db_connection elixir_make ];
     };
 
@@ -666,6 +662,12 @@ let
         version = "${version}";
         sha256 = "0d8167d930b704feb94b41414ca7f5779dff9bca7fcf619fcef18de138f08736";
       };
+
+      # Set HOME for elixir_make cache directory
+      HOME = ".";
+
+      # Build tools needed to compile from source (when precompiled binary unavailable)
+      nativeBuildInputs = lib.optionals (pkgs != null) [ pkgs.git pkgs.gnumake pkgs.gcc ];
 
       beamDeps = [ cc_precompiler elixir_make fine ];
     };
