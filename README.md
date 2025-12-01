@@ -21,18 +21,26 @@ A modern, self-hosted media management platform for tracking, organizing, and mo
 - 🔔 **Release Calendar** – Track upcoming releases and monitor episodes
 - 🎨 **Modern Real-Time UI** – Phoenix LiveView with instant updates and responsive design
 
-## 🧪 Experimental Library Types
+## 📸 Screenshots
 
-> [!CAUTION]
-> Music, Books, and Adult libraries are **highly experimental** with minimal functionality. They support basic library scanning and browsing only—no metadata fetching, download automation, or quality profiles. Expect bugs and incomplete features.
+<p align="center">
+  <img src="screenshots/homepage.png" alt="Dashboard" width="800" />
+  <br />
+  <b>Dashboard</b>
+</p>
 
-| Library Type | Status | What Works | What Doesn't |
-|-------------|--------|------------|--------------|
-| **Music** | 🧪 Experimental | File scanning, artist/album/track browsing | Metadata enrichment, downloads |
-| **Books** | 🧪 Experimental | File scanning, author/book browsing | Metadata enrichment, downloads |
-| **Adult** | 🧪 Experimental | File scanning, basic browsing | Metadata enrichment, downloads |
+<details>
+<summary>More screenshots</summary>
 
-Configure library paths via Admin UI or environment variables (see [Library Path Configuration](#library-path-configuration)).
+| Movies | TV Shows |
+|:------:|:--------:|
+| <img src="screenshots/movies.png" alt="Movies" width="400" /> | <img src="screenshots/tv-shows.png" alt="TV Shows" width="400" /> |
+
+| Calendar | Search |
+|:--------:|:------:|
+| <img src="screenshots/calendar.png" alt="Calendar View" width="400" /> | <img src="screenshots/search.png" alt="Search" width="400" /> |
+
+</details>
 
 ## 🆚 Comparison with Radarr & Sonarr
 
@@ -71,35 +79,6 @@ Mydia includes 8 built-in profiles (SD through Remux-2160p) plus a **preset gall
 - **Storage & Use-Case** – Profiles optimized for storage constraints, streaming, or mobile
 
 Profiles support resolution filtering, file size limits, source/codec/audio preferences, HDR format preferences, and upgrade rules. Releases are automatically scored and ranked based on your profile settings.
-
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td><img src="screenshots/homepage.png" alt="Dashboard" /></td>
-    <td><img src="screenshots/movies.png" alt="Movies" /></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Dashboard</b></td>
-    <td align="center"><b>Movies</b></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/tv-shows.png" alt="TV Shows" /></td>
-    <td><img src="screenshots/calendar.png" alt="Calendar View" /></td>
-  </tr>
-  <tr>
-    <td align="center"><b>TV Shows</b></td>
-    <td align="center"><b>Calendar View</b></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/search.png" alt="Search" /></td>
-    <td></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Search</b></td>
-    <td></td>
-  </tr>
-</table>
 
 ## 🏗️ Supported Architectures
 
@@ -802,6 +781,19 @@ Capture automated screenshots for documentation:
 ```
 
 See `assets/SCREENSHOTS.md` for configuration options.
+
+## 🧪 Experimental Library Types
+
+> [!CAUTION]
+> Music, Books, and Adult libraries are **highly experimental** with minimal functionality. They support basic library scanning and browsing only—no metadata fetching, download automation, or quality profiles. Expect bugs and incomplete features.
+
+| Library Type | Status | What Works | What Doesn't |
+|-------------|--------|------------|--------------|
+| **Music** | 🧪 Experimental | File scanning, artist/album/track browsing | Metadata enrichment, downloads |
+| **Books** | 🧪 Experimental | File scanning, author/book browsing | Metadata enrichment, downloads |
+| **Adult** | 🧪 Experimental | File scanning, basic browsing | Metadata enrichment, downloads |
+
+Configure library paths via Admin UI or environment variables (see [Library Path Configuration](#library-path-configuration)).
 
 ## 🛠️ Tech Stack
 
