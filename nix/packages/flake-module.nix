@@ -280,11 +280,20 @@
         chmod +x $out/bin/tailwindcss
       '';
     };
+
+    # Extract version from mix.exs
+    version =
+      ./mix.exs
+      |> builtins.readFile
+      |> builtins.replaceStrings ["\n"] [" "]
+      |> builtins.match ''.*version: "([^"]+)".*''
+      |> builtins.head;
   in {
     # Production package
     packages.default = beamPackages.mixRelease {
+      inherit version;
+
       pname = "mydia";
-      version = "0.6.0";
       src = ../..;
 
       mixNixDeps = mixNixDeps;
