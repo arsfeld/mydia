@@ -42,81 +42,15 @@
         };
       };
     };
-
-    databaseProviderSqlite = types.submodule ({...}: {
-      options = {
-        type = mkOption {
-          type = types.enum ["sqlite"];
-        };
-
-        path = mkOption {
-          type = types.path;
-          default = "/var/lib/mydia/mydia.db";
-          description = ''
-            Path to sqlite database file.
-          '';
-        };
-      };
-    });
-
-    databaseProviderPostgresql = types.submodule ({...}: {
-      options = {
-        type = mkOption {
-          type = types.enum ["postgresql"];
-        };
-
-        sslMode = mkOption {
-          type = types.enum ["verify-ca" "verify-full" "require" "prefer" "allow" "disabled"];
-          default = "verify-full";
-          example = "verify-ca";
-          description = ''
-            How to verify the server's ssl
-
-            | mode        | eavesdropping protection | MITM protection      | Statement                                                                                                                                   |
-            |-------------|--------------------------|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-            | disable     | No                       | No                   | I don't care about security, and I don't want to pay the overhead of encryption.                                                            |
-            | allow       | Maybe                    | No                   | I don't care about security, but I will pay the overhead of encryption if the server insists on it.                                         |
-            | prefer      | Maybe                    | No                   | I don't care about encryption, but I wish to pay the overhead of encryption if the server supports it.                                      |
-            | require     | Yes                      | No                   | I want my data to be encrypted, and I accept the overhead. I trust that the network will make sure I always connect to the server I want.   |
-            | verify-ca	  | Yes                      | Depends on CA policy | I want my data encrypted, and I accept the overhead. I want to be sure that I connect to a server that I trust.                             |
-            | verify-full | Yes                      | Yes                  | I want my data encrypted, and I accept the overhead. I want to be sure that I connect to a server I trust, and that it's the one I specify. |
-
-            [Source](https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS)
-          '';
-        };
-
-        host = mkOption {
-          type = types.str;
-          example = "host.tld";
-          description = ''
-            Hostname
-          '';
-        };
-
-        port = mkOption {
-          type = types.port;
-          default = 5432;
-          example = "5432";
-          description = ''
-            Port
-          '';
-        };
-
-        protocol = mkOption {
-          type = types.str;
-          default = "https";
-          example = "https";
-          description = ''
-            Which protocol to use when creating a url string
-          '';
-        };
-      };
-    });
   in {
     options.services.mydia = {
       enable = mkEnableOption "Mydia media manager";
 
-      package = mkPackageOption self.packages.${pkgs.stdenv.hostPlatform.system} "default" {};
+      package = mkPackageOption self.packages.${pkgs.stdenv.hostPlatform.system} (
+        if cfg.database.type == "sqlite"
+        then "mydia"
+        else "mydia-pg"
+      ) {};
 
       port = mkOption {
         type = types.port;

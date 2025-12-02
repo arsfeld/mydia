@@ -6,6 +6,8 @@
     lib,
     ...
   }: let
+    inherit (lib) recursiveUpdate;
+
     # BEAM packages (Erlang/Elixir)
     beamPackages = pkgs.beam.packages.erlang_27;
 
@@ -283,14 +285,13 @@
 
     # Extract version from mix.exs
     version =
-      ./mix.exs
+      ../../mix.exs
       |> builtins.readFile
       |> builtins.replaceStrings ["\n"] [" "]
       |> builtins.match ''.*version: "([^"]+)".*''
       |> builtins.head;
-  in {
-    # Production package
-    packages.default = beamPackages.mixRelease {
+
+    package = {
       inherit version;
 
       pname = "mydia";
@@ -309,7 +310,6 @@
       # Use ffmpeg_6 for compatibility with membrane plugins
       buildInputs = [
         pkgs.sqlite
-        pkgs.postgresql
         pkgs.ffmpeg_6-headless
       ];
 
@@ -319,7 +319,6 @@
       # Set HOME to a writable directory for elixir_make cache
       env = {
         HOME = "/tmp";
-        DATABASE_TYPE = "postgres";
       };
 
       # Remove dev/test dependencies from the build
@@ -381,6 +380,20 @@
         wrapProgram $out/bin/mydia \
           --prefix PATH : ${pkgs.lib.makeBinPath [pkgs.ffmpeg_6-headless pkgs.sqlite pkgs.postgresql]}
       '';
+    };
+  in {
+    # Production package
+    packages = {
+      default = beamPackages.mixRelease package;
+
+      mydia = beamPackages.mixRelease package;
+      mydia-pg = beamPackages.mixRelease (recursiveUpdate package {
+        buildInputs = [pkgs.postgresql];
+
+        env = {
+          DATABASE_TYPE = "postgres";
+        };
+      });
     };
   };
 }

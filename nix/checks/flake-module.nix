@@ -22,6 +22,8 @@
         };
       };
 
+      # See the devmanual for available python methods:
+      # https://nixos.org/manual/nixos/stable/#ssec-machine-objects
       testScript = ''
         import time
 
