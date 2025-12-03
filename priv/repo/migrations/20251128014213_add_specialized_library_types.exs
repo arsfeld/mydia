@@ -23,7 +23,7 @@ defmodule Mydia.Repo.Migrations.AddSpecializedLibraryTypes do
               last_scan_at TEXT,
               last_scan_status TEXT CHECK(last_scan_status IS NULL OR last_scan_status IN ('success', 'failed', 'in_progress')),
               last_scan_error TEXT,
-              quality_profile_id TEXT REFERENCES quality_profiles(id) ON DELETE SET NULL,
+              quality_profile_id UUID REFERENCES quality_profiles(id) ON DELETE SET NULL,
               updated_by_id TEXT REFERENCES users(id) ON DELETE SET NULL,
               inserted_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -39,7 +39,7 @@ defmodule Mydia.Repo.Migrations.AddSpecializedLibraryTypes do
               last_scan_at TEXT,
               last_scan_status TEXT CHECK(last_scan_status IS NULL OR last_scan_status IN ('success', 'failed', 'in_progress')),
               last_scan_error TEXT,
-              quality_profile_id TEXT REFERENCES quality_profiles(id) ON DELETE SET NULL,
+              quality_profile_id UUID REFERENCES quality_profiles(id) ON DELETE SET NULL,
               updated_by_id TEXT REFERENCES users(id) ON DELETE SET NULL,
               inserted_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
