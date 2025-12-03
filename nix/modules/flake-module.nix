@@ -271,7 +271,7 @@
           in {
             DATABASE_TYPE = "postgres";
             DATABASE_HOST = url.hostName;
-            DATABASE_PORT = url.port;
+            DATABASE_PORT = toString url.port;
             DATABASE_NAME =
               if url?path
               then url.path |> lib.splitString "/" |> lib.head
