@@ -92,7 +92,7 @@
         };
         default = {
           type = "sqlite";
-          uri = "file:/var/lib/mydia/mydia.db";
+          uri = "file:///var/lib/mydia/mydia.db";
         };
         description = '''';
       };
@@ -259,8 +259,26 @@
             HOME = cfg.dataDir;
           }
           // lib.optionalAttrs (cfg.database.type == "sqlite") {
-            DATABASE_PATH = cfg.database.uri;
+            DATABASE_TYPE = "sqlite";
+            DATABASE_PATH =
+              cfg.database.uri
+              |> lib.removePrefix "file:"
+              |> lib.normalizePath;
           }
+          // lib.optionalAttrs (cfg.database.type == "postgres")
+          (let
+            url = self.lib.url.parse cfg.database.uri;
+          in {
+            DATABASE_TYPE = "postgres";
+            DATABASE_HOST = url.hostName;
+            DATABASE_PORT = url.port;
+            DATABASE_NAME =
+              if url?path
+              then url.path |> lib.splitString "/" |> lib.head
+              else "mydia";
+            DATABASE_USER = url.user or "mydia";
+            DATABASE_PASSWORD = url.password or "mydia";
+          })
           // lib.optionalAttrs cfg.oidc.enable {
             OIDC_ISSUER = cfg.oidc.issuer;
             OIDC_SCOPES = lib.concatStringsSep " " cfg.oidc.scopes;

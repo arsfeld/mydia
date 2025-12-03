@@ -15,7 +15,9 @@
     flake-parts,
     ...
   } @ inputs:
-    flake-parts.lib.mkFlake {inherit inputs;} {
+    flake-parts.lib.mkFlake {
+      inherit inputs;
+    } {
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -24,6 +26,7 @@
       ];
 
       imports = [
+        ./nix/lib/flake-module.nix
         ./nix/devShells/flake-module.nix
         ./nix/packages/flake-module.nix
         ./nix/modules/flake-module.nix
