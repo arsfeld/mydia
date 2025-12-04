@@ -7,37 +7,37 @@
     ...
   }: {
     devShells.default = pkgs.mkShell {
-      buildInputs = [
+      buildInputs = with pkgs; [
         # Elixir/Erlang (latest)
-        pkgs.elixir
-        pkgs.erlang
+        elixir
+        erlang
 
         # Node.js for assets (latest)
-        pkgs.nodejs
+        nodejs
 
         # Database
-        pkgs.sqlite
+        sqlite
 
         # Media processing
-        pkgs.ffmpeg
+        ffmpeg
 
         # Build tools for NIFs (bcrypt_elixir, argon2_elixir, membrane)
-        pkgs.gcc
-        pkgs.gnumake
-        pkgs.pkg-config
+        gcc
+        gnumake
+        pkg-config
 
         # File watching (for live reload)
-        pkgs.inotify-tools
+        inotify-tools
 
         # Browser testing with Wallaby
-        pkgs.chromium
-        pkgs.chromedriver
+        chromium
+        chromedriver
 
         # Git (needed for deps)
-        pkgs.git
+        git
 
         # Useful development utilities
-        pkgs.curl
+        curl
       ];
 
       shellHook = ''
