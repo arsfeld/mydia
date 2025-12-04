@@ -7,6 +7,7 @@
     ...
   }: let
     cfg = config.services.mydia;
+    dbUrl = self.lib.url.parse cfg.database.uri;
     inherit (lib) mkEnableOption mkPackageOption mkOption mkIf types literalExpression optional optionals optionalString;
 
     # Download client submodule type
@@ -240,6 +241,31 @@
     };
 
     config = mkIf cfg.enable {
+      warnings =
+        []
+        ++ lib.optionalString (cfg.database.type == "postgres" && dbUrl.password != null) [
+          ''
+            Passing the password via the URL is strongly discouraged.
+            As this would expose your password in both your git,
+            as well as in the nix store on the target machine.
+
+            Instead we recommend you instead use sops-nix/agenix to manage the password for you.
+          ''
+        ];
+
+      # assertions = [
+      #   {
+      #     assertion = cfg.database.type == "postgres" -> dbUrl.password == null;
+      #     message = ''
+      #       Passing the password via the URL is strongly discouraged.
+      #       As this would expose your password in both your git,
+      #       as well as in the nix store on the target machine.
+
+      #       Instead we recommend you instead use sops-nix/agenix to manage the password for you.
+      #     '';
+      #   }
+      # ];
+
       systemd.services.mydia = {
         description = "Mydia Media Manager";
         wantedBy = ["multi-user.target"];
@@ -257,26 +283,20 @@
             RELEASE_COOKIE = "mydia_nixos";
             RELEASE_DISTRIBUTION = "none";
             HOME = cfg.dataDir;
+            DATABASE_TYPE = cfg.database.type;
           }
           // lib.optionalAttrs (cfg.database.type == "sqlite") {
-            DATABASE_TYPE = "sqlite";
-            DATABASE_PATH =
-              cfg.database.uri
-              |> self.lib.url.parse
-              |> (url: url.path);
+            DATABASE_PATH = dbUrl.path;
           }
           // lib.optionalAttrs (cfg.database.type == "postgres")
-          (let
-            url = self.lib.url.parse cfg.database.uri;
-          in {
-            DATABASE_TYPE = "postgres";
-            DATABASE_HOST = url.hostName;
-            DATABASE_PORT = toString url.port;
-            DATABASE_NAME = (url.path or "/mydia") |> lib.substring 1 (-1) |> lib.splitString "/" |> lib.head;
-            DATABASE_USER = url.user or "mydia";
-            DATABASE_PASSWORD = url.password or "mydia";
-            DATABASE_SSL_MODE = url.queryParams.sslmode or "verify";
-          })
+          {
+            DATABASE_HOST = dbUrl.hostName;
+            DATABASE_PORT = toString dbUrl.port;
+            DATABASE_NAME = (dbUrl.path or "/mydia") |> lib.substring 1 (-1) |> lib.splitString "/" |> lib.head;
+            DATABASE_USER = dbUrl.user or "mydia";
+            DATABASE_PASSWORD = dbUrl.password or "";
+            DATABASE_SSL_MODE = dbUrl.queryParams.sslmode or "verify";
+          }
           // lib.optionalAttrs cfg.oidc.enable {
             OIDC_ISSUER = cfg.oidc.issuer;
             OIDC_SCOPES = lib.concatStringsSep " " cfg.oidc.scopes;
