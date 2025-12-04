@@ -32,7 +32,7 @@ in {
         switch state
         |> when "scheme" "(([a-z]+):/{0,2})" (_: scheme: {inherit scheme;})
         |> when "user" "(([^@:]+)(:([^@]+))?@)" (_: user: _: password: {inherit user password;})
-        |> when "host" "((.+):([0-9]+)|(.+)*?)(/|\\?|#|$)" (host: hostname1: port: hostname2: _: {
+        |> when "host" "(([^/?#]+):([0-9]+)|([^/?#]+)*?)(/|\\?|#|$)" (host: hostname1: port: hostname2: _: {
           inherit host;
           hostName =
             if hostname1 != null

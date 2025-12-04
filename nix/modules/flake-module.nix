@@ -262,8 +262,8 @@
             DATABASE_TYPE = "sqlite";
             DATABASE_PATH =
               cfg.database.uri
-              |> lib.removePrefix "file:"
-              |> lib.normalizePath;
+              |> self.lib.url.parse
+              |> (url: url.path);
           }
           // lib.optionalAttrs (cfg.database.type == "postgres")
           (let
