@@ -1,14 +1,39 @@
 defmodule Mydia.Repo.Migrations.ChangeEventActorIdToString do
   use Ecto.Migration
+  import Mydia.Repo.Migrations.Helpers
 
-  @doc """
+  @moduledoc """
   Change actor_id from binary_id (UUID) to string to support both:
   - UUIDs for user actors
   - Descriptive strings for system/job actors (e.g., "media_context", "download_monitor")
 
+  PostgreSQL supports ALTER COLUMN TYPE directly.
   SQLite doesn't support ALTER COLUMN, so we recreate the table.
   """
+
   def up do
+    if postgres?() do
+      # PostgreSQL: simply alter the column type
+      # UUIDs cast to text automatically
+      execute "ALTER TABLE events ALTER COLUMN actor_id TYPE VARCHAR USING actor_id::text"
+    else
+      # SQLite: recreate the table
+      sqlite_recreate_up()
+    end
+  end
+
+  def down do
+    if postgres?() do
+      # PostgreSQL: change back to UUID
+      # This will fail if non-UUID strings exist - which is expected
+      execute "ALTER TABLE events ALTER COLUMN actor_id TYPE UUID USING actor_id::uuid"
+    else
+      # SQLite: recreate the table
+      sqlite_recreate_down()
+    end
+  end
+
+  defp sqlite_recreate_up do
     # Create new table with string actor_id
     create table(:events_new, primary_key: false) do
       add :id, :binary_id, primary_key: true
@@ -46,7 +71,7 @@ defmodule Mydia.Repo.Migrations.ChangeEventActorIdToString do
     create index(:events, [:category, :type, :inserted_at])
   end
 
-  def down do
+  defp sqlite_recreate_down do
     # Create table with original binary_id type
     create table(:events_new, primary_key: false) do
       add :id, :binary_id, primary_key: true

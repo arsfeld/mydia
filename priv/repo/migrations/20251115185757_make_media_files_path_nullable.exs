@@ -10,6 +10,7 @@ defmodule Mydia.Repo.Migrations.MakeMediaFilesPathNullable do
   """
 
   use Ecto.Migration
+  import Mydia.Repo.Migrations.Helpers
 
   def up do
     # Drop the unique index on path first
@@ -113,9 +114,5 @@ defmodule Mydia.Repo.Migrations.MakeMediaFilesPathNullable do
       create index(:media_files, [:episode_id])
       create index(:media_files, [:library_path_id])
     end
-  end
-
-  defp postgres? do
-    Application.get_env(:mydia, :database_type, :sqlite) == :postgres
   end
 end

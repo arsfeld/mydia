@@ -1,6 +1,5 @@
 defmodule Mydia.Repo.Migrations.AddUniqueConstraintToDownloads do
   use Ecto.Migration
-  import Ecto.Query
 
   def up do
     # Clear all existing downloads to avoid constraint violations

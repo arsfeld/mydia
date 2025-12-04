@@ -5,12 +5,35 @@ defmodule Mydia.Repo.Migrations.MakeDownloadClientHostPortNullable do
   Blackhole clients use folder paths from connection_settings instead of
   host/port, so these fields should be optional.
 
-  SQLite doesn't support ALTER COLUMN, so we recreate the table.
+  SQLite: Recreates the table (doesn't support ALTER COLUMN).
+  PostgreSQL: Uses ALTER COLUMN DROP NOT NULL.
   """
   use Ecto.Migration
+  import Mydia.Repo.Migrations.Helpers
 
   def up do
-    # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+    for_database(
+      sqlite: fn -> sqlite_recreate_table_nullable() end,
+      postgres: fn ->
+        execute "ALTER TABLE download_client_configs ALTER COLUMN host DROP NOT NULL"
+        execute "ALTER TABLE download_client_configs ALTER COLUMN port DROP NOT NULL"
+      end
+    )
+  end
+
+  def down do
+    for_database(
+      sqlite: fn -> sqlite_recreate_table_not_null() end,
+      postgres: fn ->
+        # May fail if null values exist
+        execute "ALTER TABLE download_client_configs ALTER COLUMN host SET NOT NULL"
+        execute "ALTER TABLE download_client_configs ALTER COLUMN port SET NOT NULL"
+      end
+    )
+  end
+
+  # SQLite: Recreate table with nullable host and port
+  defp sqlite_recreate_table_nullable do
     execute """
     CREATE TABLE download_client_configs_new (
       id BLOB PRIMARY KEY,
@@ -34,24 +57,18 @@ defmodule Mydia.Repo.Migrations.MakeDownloadClientHostPortNullable do
     )
     """
 
-    execute """
-    INSERT INTO download_client_configs_new
-    SELECT * FROM download_client_configs
-    """
-
+    execute "INSERT INTO download_client_configs_new SELECT * FROM download_client_configs"
     execute "DROP TABLE download_client_configs"
-
     execute "ALTER TABLE download_client_configs_new RENAME TO download_client_configs"
 
-    # Recreate indexes
     create unique_index(:download_client_configs, [:name])
     create index(:download_client_configs, [:enabled])
     create index(:download_client_configs, [:priority])
     create index(:download_client_configs, [:type])
   end
 
-  def down do
-    # Restore NOT NULL constraints (may fail if null values exist)
+  # SQLite: Recreate table with NOT NULL host and port
+  defp sqlite_recreate_table_not_null do
     execute """
     CREATE TABLE download_client_configs_new (
       id BLOB PRIMARY KEY,
@@ -75,13 +92,8 @@ defmodule Mydia.Repo.Migrations.MakeDownloadClientHostPortNullable do
     )
     """
 
-    execute """
-    INSERT INTO download_client_configs_new
-    SELECT * FROM download_client_configs
-    """
-
+    execute "INSERT INTO download_client_configs_new SELECT * FROM download_client_configs"
     execute "DROP TABLE download_client_configs"
-
     execute "ALTER TABLE download_client_configs_new RENAME TO download_client_configs"
 
     create unique_index(:download_client_configs, [:name])
