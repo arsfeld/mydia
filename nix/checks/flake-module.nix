@@ -15,7 +15,7 @@
 
               database = {
                 type = "postgres";
-                uri = "postgres://localhost/mydia?sslMode=disabled";
+                uri = "postgres://localhost/mydia?sslmode=disabled";
               };
             };
           };
