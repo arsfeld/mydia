@@ -991,6 +991,8 @@ defmodule Mydia.Jobs.MediaImport do
   defp get_adapter_module(:rtorrent), do: Mydia.Downloads.Client.Rtorrent
   defp get_adapter_module(:blackhole), do: Mydia.Downloads.Client.Blackhole
   defp get_adapter_module(:http), do: Mydia.Downloads.Client.HTTP
+  defp get_adapter_module(:sabnzbd), do: Mydia.Downloads.Client.Sabnzbd
+  defp get_adapter_module(:nzbget), do: Mydia.Downloads.Client.Nzbget
   defp get_adapter_module(_), do: nil
 
   defp build_client_config(client_config) do

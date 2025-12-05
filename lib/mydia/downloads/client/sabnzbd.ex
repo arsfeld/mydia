@@ -63,6 +63,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def test_connection(config) do
+    config = normalize_config(config)
+
     unless config[:api_key] do
       {:error, Error.invalid_config("API key is required for SABnzbd")}
     else
@@ -96,6 +98,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def add_torrent(config, torrent, opts \\ []) do
+    config = normalize_config(config)
+
     unless config[:api_key] do
       {:error, Error.invalid_config("API key is required for SABnzbd")}
     else
@@ -159,11 +163,35 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
     api_path = build_api_path(config)
 
     # Create multipart form with the NZB file
+    # Write the NZB bytes to a temporary file so we can stream it using File.stream!/3.
+    tmp_file =
+      Path.join(System.tmp_dir!(), "mydia_upload_#{:erlang.unique_integer([:positive])}.nzb")
+
+    # Write the binary contents to a temporary file (will raise on failure)
+    File.write!(tmp_file, file_contents)
+
+    # Create a File.Stream for multipart upload and gather file metadata
+    stream = File.stream!(tmp_file, [], 2048)
+    stat = File.stat!(tmp_file)
+
     multipart_body = [
-      {:file, file_contents, [name: "nzbfile", filename: "upload.nzb"]}
+      {"nzbfile", {stream, [filename: "upload.nzb", content_type: MIME.from_path(tmp_file), size: stat.size]}}
     ]
 
-    case HTTP.post(req, api_path, params: params, form_multipart: multipart_body) do
+    # Perform the request and ensure the temp file is removed afterwards
+    result =
+      try do
+        HTTP.post(req, api_path, params: params, form_multipart: multipart_body)
+      after
+        # Best-effort cleanup; ignore errors when removing the file
+        try do
+          File.rm(tmp_file)
+        rescue
+          _ -> :ok
+        end
+      end
+
+    case result do
       {:ok, %{status: 200, body: body}} when is_map(body) ->
         case get_in(body, ["nzo_ids"]) do
           [nzo_id | _] when is_binary(nzo_id) ->
@@ -192,6 +220,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def get_status(config, client_id) do
+    config = normalize_config(config)
+
     with {:ok, queue_items} <- list_queue_items(config),
          {:ok, history_items} <- list_history_items(config) do
       # Search in queue first, then history
@@ -207,6 +237,7 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def list_torrents(config, opts \\ []) do
+    config = normalize_config(config)
     filter = Keyword.get(opts, :filter, :all)
 
     with {:ok, queue_items} <- list_queue_items(config),
@@ -244,6 +275,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def remove_torrent(config, client_id, opts \\ []) do
+    config = normalize_config(config)
+
     unless config[:api_key] do
       {:error, Error.invalid_config("API key is required for SABnzbd")}
     else
@@ -316,6 +349,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def pause_torrent(config, client_id) do
+    config = normalize_config(config)
+
     unless config[:api_key] do
       {:error, Error.invalid_config("API key is required for SABnzbd")}
     else
@@ -354,6 +389,8 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
 
   @impl true
   def resume_torrent(config, client_id) do
+    config = normalize_config(config)
+
     unless config[:api_key] do
       {:error, Error.invalid_config("API key is required for SABnzbd")}
     else
@@ -571,6 +608,17 @@ defmodule Mydia.Downloads.Client.Sabnzbd do
   end
 
   defp parse_timestamp(_), do: nil
+
+  # Normalize config to ensure :api_key is available at the top-level.
+  # Some callers construct the client config with the API key inside `:options`.
+  # This helper will prefer an explicit top-level `:api_key` but fall back to
+  # `config.options[:api_key]` when needed. It returns the normalized map.
+  defp normalize_config(config) when is_map(config) do
+    api_from_options = get_in(config, [:options, :api_key])
+
+    config
+    |> Map.put_new(:api_key, api_from_options)
+  end
 
   defp add_optional_param(params, _key, nil), do: params
 
