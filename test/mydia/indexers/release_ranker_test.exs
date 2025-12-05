@@ -151,6 +151,7 @@ defmodule Mydia.Indexers.ReleaseRankerTest do
         assert Map.has_key?(item.breakdown, :seeders)
         assert Map.has_key?(item.breakdown, :size)
         assert Map.has_key?(item.breakdown, :age)
+        assert Map.has_key?(item.breakdown, :title_match)
         assert Map.has_key?(item.breakdown, :tag_bonus)
         assert Map.has_key?(item.breakdown, :total)
         assert item.breakdown.total == item.score
@@ -762,6 +763,7 @@ defmodule Mydia.Indexers.ReleaseRankerTest do
       assert Float.round(breakdown.seeders, 2) == breakdown.seeders
       assert Float.round(breakdown.size, 2) == breakdown.size
       assert Float.round(breakdown.age, 2) == breakdown.age
+      assert Float.round(breakdown.title_match, 2) == breakdown.title_match
       assert Float.round(breakdown.tag_bonus, 2) == breakdown.tag_bonus
       assert Float.round(breakdown.total, 2) == breakdown.total
     end
@@ -773,15 +775,98 @@ defmodule Mydia.Indexers.ReleaseRankerTest do
       breakdown = List.first(ranked).breakdown
 
       # Recalculate total from breakdown
+      # Quality: 50%, Seeders: 20%, Title Match: 15%, Size: 10%, Age: 5%
       calculated_total =
-        breakdown.quality * 0.6 +
-          breakdown.seeders * 0.25 +
+        breakdown.quality * 0.5 +
+          breakdown.seeders * 0.2 +
+          breakdown.title_match * 0.15 +
           breakdown.size * 0.1 +
           breakdown.age * 0.05 +
           breakdown.tag_bonus
 
       # Allow small rounding difference
       assert_in_delta breakdown.total, calculated_total, 0.1
+    end
+  end
+
+  describe "title matching" do
+    test "exact title match gets higher score than partial match" do
+      # Simulates: searching for "The Studio S01E01"
+      exact_match =
+        build_result(%{
+          title: "The.Studio.2025.S01E01.1080p.WEB-DL.x264",
+          seeders: 30
+        })
+
+      partial_match =
+        build_result(%{
+          title: "Marvel.Studios.Assembled.S01E01.1080p.HEVC.x265",
+          seeders: 30
+        })
+
+      # With search_query, exact match should rank higher
+      ranked =
+        ReleaseRanker.rank_all([exact_match, partial_match],
+          search_query: "The Studio S01E01",
+          min_seeders: 1
+        )
+
+      # The exact match should be first
+      assert List.first(ranked).result.title =~ "The.Studio"
+
+      # And should have a higher title_match score
+      exact_breakdown = Enum.find(ranked, &(&1.result.title =~ "The.Studio")).breakdown
+      partial_breakdown = Enum.find(ranked, &(&1.result.title =~ "Marvel")).breakdown
+
+      assert exact_breakdown.title_match > partial_breakdown.title_match
+    end
+
+    test "without search_query, title_match defaults to neutral score" do
+      result = build_result(%{seeders: 50})
+
+      ranked = ReleaseRanker.rank_all([result], min_seeders: 1)
+      breakdown = List.first(ranked).breakdown
+
+      # Without search_query, should use neutral score of 500
+      assert breakdown.title_match == 500.0
+    end
+
+    test "title matching ignores quality indicators" do
+      result =
+        build_result(%{
+          title: "The.Studio.S01E01.1080p.BluRay.x264.DTS",
+          seeders: 50
+        })
+
+      ranked =
+        ReleaseRanker.rank_all([result],
+          search_query: "The Studio S01E01",
+          min_seeders: 1
+        )
+
+      breakdown = List.first(ranked).breakdown
+
+      # Should have high title match despite extra quality terms
+      assert breakdown.title_match > 600
+    end
+
+    test "title matching handles year in query" do
+      result =
+        build_result(%{
+          title: "The.Studio.2025.S01E01.1080p.WEB-DL",
+          seeders: 50
+        })
+
+      ranked =
+        ReleaseRanker.rank_all([result],
+          search_query: "The Studio 2025 S01E01",
+          min_seeders: 1
+        )
+
+      breakdown = List.first(ranked).breakdown
+
+      # Should have high title match with year included
+      assert breakdown.title_match > 600
     end
   end
 end
