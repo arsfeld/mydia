@@ -1186,16 +1186,45 @@ defmodule MydiaWeb.MediaLive.Show do
 
   def handle_info(:auto_search_timeout, socket) do
     # If auto_searching is still true after timeout, reset it and show message
+    # Note: This is now a fallback - the search_completed broadcast should arrive first
     socket =
       if socket.assigns.auto_searching do
         socket
         |> assign(:auto_searching, false)
-        |> put_flash(:warning, "Search completed but no suitable releases found")
+        |> put_flash(:warning, "Search timed out - no response from search job")
       else
         socket
       end
 
     {:noreply, socket}
+  end
+
+  def handle_info({:search_completed, media_item_id, stats}, socket) do
+    # Only handle if this search was for the current media item
+    if media_item_id == socket.assigns.media_item.id do
+      # Reset searching states
+      socket =
+        socket
+        |> assign(:auto_searching, false)
+        |> assign(:auto_searching_season, nil)
+        |> assign(:auto_searching_episode, nil)
+
+      # Build the completion message
+      message = build_search_completion_message(stats)
+
+      # Determine flash type based on results
+      flash_type =
+        cond do
+          Map.get(stats, :error) -> :error
+          stats.downloads_initiated > 0 -> :info
+          stats.results_found == 0 -> :warning
+          true -> :warning
+        end
+
+      {:noreply, put_flash(socket, flash_type, message)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:auto_search_season_timeout, season_num}, socket) do
@@ -1639,6 +1668,26 @@ defmodule MydiaWeb.MediaLive.Show do
       "movie" -> :movie
       "tv_show" -> :episode
       _ -> :movie
+    end
+  end
+
+  defp build_search_completion_message(stats) do
+    indexers = stats.indexers_searched
+    results = stats.results_found
+    picked_up = stats.downloads_initiated
+
+    cond do
+      Map.get(stats, :error) ->
+        "Search failed: #{stats.error}"
+
+      picked_up > 0 ->
+        "Search complete: #{indexers} indexer(s) searched, #{results} result(s) found, #{picked_up} download(s) started"
+
+      results > 0 ->
+        "Search complete: #{indexers} indexer(s) searched, #{results} result(s) found, but none matched quality criteria"
+
+      true ->
+        "Search complete: #{indexers} indexer(s) searched, no results found"
     end
   end
 end
