@@ -56,6 +56,7 @@ defmodule Mydia.Jobs.TVShowSearch do
   alias Mydia.{Repo, Media, Indexers, Downloads}
   alias Mydia.Indexers.ReleaseRanker
   alias Mydia.Media.{MediaItem, Episode}
+  alias Phoenix.PubSub
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"mode" => "specific", "episode_id" => episode_id} = args}) do
@@ -197,11 +198,26 @@ defmodule Mydia.Jobs.TVShowSearch do
                 title: media_item.title
               )
 
-              :ok
+              {:ok,
+               %{
+                 indexers_searched: count_enabled_indexers(),
+                 results_found: 0,
+                 downloads_initiated: 0
+               }}
             else
-              # For "show" mode, start with counter at 0
-              process_episodes_with_smart_logic(media_item, episodes, 0, args)
-              :ok
+              # For "show" mode, start with counter at 0 and track stats
+              indexers_count = count_enabled_indexers()
+
+              {_search_count, stats} =
+                process_episodes_with_smart_logic_and_stats(
+                  media_item,
+                  episodes,
+                  0,
+                  args,
+                  %{results_found: 0, downloads_initiated: 0}
+                )
+
+              {:ok, Map.put(stats, :indexers_searched, indexers_count)}
             end
 
           %MediaItem{type: type} ->
@@ -221,11 +237,15 @@ defmodule Mydia.Jobs.TVShowSearch do
     duration = System.monotonic_time(:millisecond) - start_time
 
     case result do
-      :ok ->
+      {:ok, stats} ->
         Logger.info("Show search completed",
           duration_ms: duration,
-          media_item_id: media_item_id
+          media_item_id: media_item_id,
+          stats: stats
         )
+
+        # Broadcast search completion for UI feedback
+        broadcast_search_completed(media_item_id, stats)
 
         :ok
 
@@ -235,6 +255,14 @@ defmodule Mydia.Jobs.TVShowSearch do
           duration_ms: duration,
           media_item_id: media_item_id
         )
+
+        # Broadcast failure for UI feedback
+        broadcast_search_completed(media_item_id, %{
+          indexers_searched: 0,
+          results_found: 0,
+          downloads_initiated: 0,
+          error: inspect(reason)
+        })
 
         {:error, reason}
     end
@@ -615,7 +643,7 @@ defmodule Mydia.Jobs.TVShowSearch do
 
   defp process_season_pack_results(media_item, season_number, episodes, results, args) do
     # Build ranking options from the first episode (they all share the same show)
-    ranking_opts = build_ranking_options_for_season(media_item, episodes, args)
+    ranking_opts = build_ranking_options_for_season(media_item, season_number, episodes, args)
 
     case ReleaseRanker.select_best_result(results, ranking_opts) do
       nil ->
@@ -802,9 +830,11 @@ defmodule Mydia.Jobs.TVShowSearch do
   defp build_ranking_options(episode, args) do
     # Start with base options - TV shows typically have smaller file sizes than movies
     # Oban job args use string keys (JSON storage)
+    # Include search_query for title relevance scoring
     base_opts = [
       min_seeders: args["min_seeders"] || 3,
-      size_range: args["size_range"] || {100, 5_000}
+      size_range: args["size_range"] || {100, 5_000},
+      search_query: build_episode_query(episode)
     ]
 
     # Add quality profile preferences if available
@@ -823,13 +853,15 @@ defmodule Mydia.Jobs.TVShowSearch do
     |> maybe_add_option(:preferred_tags, args["preferred_tags"])
   end
 
-  defp build_ranking_options_for_season(media_item, _episodes, args) do
+  defp build_ranking_options_for_season(media_item, season_number, _episodes, args) do
     # Season packs are typically much larger than individual episodes
     # A full season in HD can be 10-50GB depending on episode count and quality
     # Oban job args use string keys (JSON storage)
+    # Include search_query for title relevance scoring
     base_opts = [
       min_seeders: args["min_seeders"] || 3,
-      size_range: args["size_range"] || {2_000, 100_000}
+      size_range: args["size_range"] || {2_000, 100_000},
+      search_query: build_season_query(media_item, season_number)
     ]
 
     # Load quality profile from media_item
@@ -1039,6 +1071,328 @@ defmodule Mydia.Jobs.TVShowSearch do
       end
 
       regular
+    end
+  end
+
+  ## Private Functions - Stats Tracking
+
+  defp broadcast_search_completed(media_item_id, stats) do
+    PubSub.broadcast(
+      Mydia.PubSub,
+      "downloads",
+      {:search_completed, media_item_id, stats}
+    )
+  end
+
+  defp count_enabled_indexers do
+    # Count enabled indexers from Settings
+    indexers = Mydia.Settings.list_indexer_configs()
+    enabled_count = Enum.count(indexers, & &1.enabled)
+
+    # Also count Cardigann indexers if feature is enabled
+    cardigann_count =
+      if Application.get_env(:mydia, :features, [])[:cardigann_indexers] do
+        Mydia.Indexers.list_cardigann_definitions()
+        |> Enum.count(& &1.enabled)
+      else
+        0
+      end
+
+    enabled_count + cardigann_count
+  end
+
+  defp process_episodes_with_smart_logic_and_stats(
+         media_item,
+         episodes,
+         search_count,
+         args,
+         stats
+       ) do
+    max_per_show = get_max_searches_per_show()
+
+    Logger.info("Processing episodes with smart season pack logic (with stats)",
+      media_item_id: media_item.id,
+      title: media_item.title,
+      total_episodes: length(episodes),
+      max_searches_per_show: max_per_show
+    )
+
+    # Group episodes by season
+    episodes_by_season = Enum.group_by(episodes, & &1.season_number)
+
+    Logger.info("Grouped episodes into #{map_size(episodes_by_season)} seasons")
+
+    # Process each season independently with counter and stats tracking
+    {final_count, _seasons_processed, final_stats} =
+      Enum.reduce_while(
+        episodes_by_season,
+        {search_count, 0, stats},
+        fn {season_number, season_episodes}, {show_search_count, seasons_done, current_stats} ->
+          show_searches_used = show_search_count - search_count
+
+          if limit_reached?(show_searches_used, max_per_show) do
+            Logger.warning("Per-show search limit reached, skipping remaining seasons",
+              media_item_id: media_item.id,
+              title: media_item.title,
+              searches_for_show: show_searches_used,
+              max_searches_per_show: max_per_show,
+              seasons_remaining: map_size(episodes_by_season) - seasons_done
+            )
+
+            {:halt, {show_search_count, seasons_done, current_stats}}
+          else
+            Logger.info("Processing season",
+              media_item_id: media_item.id,
+              title: media_item.title,
+              season_number: season_number,
+              missing_episodes: length(season_episodes),
+              show_searches_used: show_searches_used
+            )
+
+            # Determine if we should prefer season pack
+            {new_count, season_stats} =
+              if should_prefer_season_pack?(season_episodes, media_item, season_number) do
+                Logger.info("70% threshold met - preferring season pack",
+                  media_item_id: media_item.id,
+                  title: media_item.title,
+                  season_number: season_number,
+                  missing_episodes: length(season_episodes)
+                )
+
+                # Try season pack first
+                search_season_with_stats(
+                  media_item,
+                  season_number,
+                  season_episodes,
+                  show_search_count,
+                  args
+                )
+              else
+                Logger.info("Below 70% threshold - downloading individual episodes",
+                  media_item_id: media_item.id,
+                  title: media_item.title,
+                  season_number: season_number,
+                  missing_episodes: length(season_episodes)
+                )
+
+                # Download individual episodes
+                search_individual_episodes_with_stats(season_episodes, show_search_count, args)
+              end
+
+            # Merge stats
+            updated_stats = %{
+              results_found: current_stats.results_found + season_stats.results_found,
+              downloads_initiated:
+                current_stats.downloads_initiated + season_stats.downloads_initiated
+            }
+
+            # Apply rate limiting delay between seasons
+            apply_search_delay()
+
+            {:cont, {new_count, seasons_done + 1, updated_stats}}
+          end
+        end
+      )
+
+    {final_count, final_stats}
+  end
+
+  defp search_season_with_stats(media_item, season_number, episodes, search_count, args) do
+    query = build_season_query(media_item, season_number)
+
+    Logger.info("Searching for season pack",
+      media_item_id: media_item.id,
+      title: media_item.title,
+      season_number: season_number,
+      query: query,
+      search_count: search_count
+    )
+
+    # Increment counter for the season pack search
+    new_count = search_count + 1
+
+    case Indexers.search_all(query, min_seeders: 3) do
+      {:ok, []} ->
+        Logger.warning("No season pack results found, falling back to individual episodes",
+          media_item_id: media_item.id,
+          title: media_item.title,
+          season_number: season_number
+        )
+
+        # Fall back to searching individual episodes
+        search_individual_episodes_with_stats(episodes, new_count, args)
+
+      {:ok, results} ->
+        Logger.info("Found #{length(results)} season pack results",
+          media_item_id: media_item.id,
+          title: media_item.title,
+          season_number: season_number
+        )
+
+        # Filter for actual season packs (no episode markers)
+        season_pack_results = filter_season_packs(results, season_number)
+
+        if season_pack_results == [] do
+          Logger.warning(
+            "No valid season packs after filtering, falling back to individual episodes",
+            media_item_id: media_item.id,
+            title: media_item.title,
+            season_number: season_number,
+            total_results: length(results)
+          )
+
+          {count, ep_stats} = search_individual_episodes_with_stats(episodes, new_count, args)
+          # Add the season pack results to the stats
+          {count, %{ep_stats | results_found: ep_stats.results_found + length(results)}}
+        else
+          result =
+            process_season_pack_results(
+              media_item,
+              season_number,
+              episodes,
+              season_pack_results,
+              args
+            )
+
+          # If season pack processing failed, fall back to individual episodes
+          case result do
+            :ok ->
+              {new_count, %{results_found: length(results), downloads_initiated: 1}}
+
+            _ ->
+              {count, ep_stats} = search_individual_episodes_with_stats(episodes, new_count, args)
+              # Add the season pack results to the stats
+              {count, %{ep_stats | results_found: ep_stats.results_found + length(results)}}
+          end
+        end
+    end
+  end
+
+  defp search_individual_episodes_with_stats(episodes, search_count, args) do
+    max_per_season = get_max_searches_per_season()
+
+    # Prioritize newer episodes (sort by air_date descending)
+    prioritized = prioritize_episodes(episodes)
+
+    Logger.info("Searching for individual episodes (with stats)",
+      total_episodes: length(episodes),
+      max_searches_per_season: max_per_season,
+      current_search_count: search_count
+    )
+
+    {final_count, successful, failed, skipped, total_results} =
+      Enum.reduce_while(
+        prioritized,
+        {search_count, 0, 0, 0, 0},
+        fn episode, {current_count, ok_count, err_count, skip_count, results_count} ->
+          season_searches = current_count - search_count
+
+          if limit_reached?(season_searches, max_per_season) do
+            remaining = length(prioritized) - (ok_count + err_count + skip_count)
+
+            Logger.warning("Per-season search limit reached, skipping remaining episodes",
+              season_number: episode.season_number,
+              searches_this_season: season_searches,
+              max_searches_per_season: max_per_season,
+              episodes_skipped: remaining
+            )
+
+            {:halt, {current_count, ok_count, err_count, skip_count + remaining, results_count}}
+          else
+            {result, ep_results} = search_episode_with_stats(episode, args)
+
+            # Apply rate limiting delay between searches
+            apply_search_delay()
+
+            new_counts =
+              case result do
+                :ok ->
+                  {current_count + 1, ok_count + 1, err_count, skip_count,
+                   results_count + ep_results}
+
+                {:error, _} ->
+                  {current_count + 1, ok_count, err_count + 1, skip_count,
+                   results_count + ep_results}
+              end
+
+            {:cont, new_counts}
+          end
+        end
+      )
+
+    Logger.info("Individual episode search completed (with stats)",
+      total: length(episodes),
+      successful: successful,
+      failed: failed,
+      skipped: skipped,
+      searches_performed: final_count - search_count
+    )
+
+    {final_count, %{results_found: total_results, downloads_initiated: successful}}
+  end
+
+  defp search_episode_with_stats(%Episode{} = episode, args) do
+    # Skip if episode already has files
+    if has_media_files?(episode) do
+      Logger.debug("Episode already has files, skipping",
+        episode_id: episode.id,
+        season: episode.season_number,
+        episode: episode.episode_number
+      )
+
+      {:ok, 0}
+    else
+      # Skip if episode hasn't aired yet
+      if future_episode?(episode) do
+        Logger.debug("Episode has future air date, skipping",
+          episode_id: episode.id,
+          season: episode.season_number,
+          episode: episode.episode_number,
+          air_date: episode.air_date
+        )
+
+        {:ok, 0}
+      else
+        perform_episode_search_with_stats(episode, args)
+      end
+    end
+  end
+
+  defp perform_episode_search_with_stats(%Episode{} = episode, args) do
+    query = build_episode_query(episode)
+
+    Logger.info("Searching for episode (with stats)",
+      episode_id: episode.id,
+      show: episode.media_item.title,
+      season: episode.season_number,
+      episode: episode.episode_number,
+      query: query
+    )
+
+    case Indexers.search_all(query, min_seeders: 3) do
+      {:ok, []} ->
+        Logger.warning("No results found for episode",
+          episode_id: episode.id,
+          show: episode.media_item.title,
+          season: episode.season_number,
+          episode: episode.episode_number,
+          query: query
+        )
+
+        {:ok, 0}
+
+      {:ok, results} ->
+        Logger.info("Found #{length(results)} results for episode",
+          episode_id: episode.id,
+          show: episode.media_item.title,
+          season: episode.season_number,
+          episode: episode.episode_number
+        )
+
+        case process_episode_results(episode, results, args) do
+          :ok -> {:ok, length(results)}
+          {:error, _} = err -> {err, length(results)}
+        end
     end
   end
 end

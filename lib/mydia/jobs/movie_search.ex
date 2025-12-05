@@ -36,6 +36,7 @@ defmodule Mydia.Jobs.MovieSearch do
   alias Mydia.{Repo, Media, Indexers, Downloads}
   alias Mydia.Indexers.ReleaseRanker
   alias Mydia.Media.MediaItem
+  alias Phoenix.PubSub
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"mode" => "all_monitored"} = args}) do
@@ -84,7 +85,7 @@ defmodule Mydia.Jobs.MovieSearch do
 
         case media_item do
           %MediaItem{type: "movie"} = movie ->
-            search_movie(movie, args)
+            search_movie_with_stats(movie, args)
 
           %MediaItem{type: type} ->
             Logger.error("Invalid media type for movie search",
@@ -103,19 +104,27 @@ defmodule Mydia.Jobs.MovieSearch do
     duration = System.monotonic_time(:millisecond) - start_time
 
     case result do
-      :ok ->
+      {:ok, stats} ->
         Logger.info("Movie search completed",
           duration_ms: duration,
-          media_item_id: media_item_id
+          media_item_id: media_item_id,
+          stats: stats
         )
+
+        # Broadcast search completion for UI feedback
+        broadcast_search_completed(media_item_id, stats)
 
         :ok
 
-      :no_results ->
+      {:no_results, stats} ->
         Logger.info("Movie search completed with no results",
           duration_ms: duration,
-          media_item_id: media_item_id
+          media_item_id: media_item_id,
+          stats: stats
         )
+
+        # Broadcast search completion for UI feedback
+        broadcast_search_completed(media_item_id, stats)
 
         :ok
 
@@ -126,11 +135,121 @@ defmodule Mydia.Jobs.MovieSearch do
           media_item_id: media_item_id
         )
 
+        # Broadcast failure for UI feedback
+        broadcast_search_completed(media_item_id, %{
+          indexers_searched: 0,
+          results_found: 0,
+          downloads_initiated: 0,
+          error: inspect(reason)
+        })
+
         {:error, reason}
     end
   end
 
   ## Private Functions
+
+  defp broadcast_search_completed(media_item_id, stats) do
+    PubSub.broadcast(
+      Mydia.PubSub,
+      "downloads",
+      {:search_completed, media_item_id, stats}
+    )
+  end
+
+  defp search_movie_with_stats(%MediaItem{} = movie, args) do
+    query = build_search_query(movie)
+    indexers_count = count_enabled_indexers()
+
+    Logger.info("Searching for movie",
+      media_item_id: movie.id,
+      title: movie.title,
+      year: movie.year,
+      query: query,
+      indexers_count: indexers_count
+    )
+
+    case Indexers.search_all(query, min_seeders: 5) do
+      {:ok, []} ->
+        Logger.warning("No results found for movie",
+          media_item_id: movie.id,
+          title: movie.title,
+          query: query
+        )
+
+        {:no_results,
+         %{
+           indexers_searched: indexers_count,
+           results_found: 0,
+           downloads_initiated: 0
+         }}
+
+      {:ok, results} ->
+        Logger.info("Found #{length(results)} results for movie",
+          media_item_id: movie.id,
+          title: movie.title
+        )
+
+        {status, downloads_initiated} = process_search_results_with_count(movie, results, args)
+
+        stats = %{
+          indexers_searched: indexers_count,
+          results_found: length(results),
+          downloads_initiated: downloads_initiated
+        }
+
+        case status do
+          :ok -> {:ok, stats}
+          :no_results -> {:no_results, stats}
+        end
+    end
+  end
+
+  defp process_search_results_with_count(movie, results, args) do
+    ranking_opts = build_ranking_options(movie, args)
+
+    case ReleaseRanker.select_best_result(results, ranking_opts) do
+      nil ->
+        Logger.warning("No suitable results after ranking for movie",
+          media_item_id: movie.id,
+          title: movie.title,
+          total_results: length(results)
+        )
+
+        {:no_results, 0}
+
+      %{result: best_result, score: score, breakdown: breakdown} ->
+        Logger.info("Selected best result for movie",
+          media_item_id: movie.id,
+          title: movie.title,
+          result_title: best_result.title,
+          score: score,
+          breakdown: breakdown
+        )
+
+        case initiate_download(movie, best_result) do
+          :ok -> {:ok, 1}
+          {:error, _} -> {:no_results, 0}
+        end
+    end
+  end
+
+  defp count_enabled_indexers do
+    # Count enabled indexers from Settings
+    indexers = Mydia.Settings.list_indexer_configs()
+    enabled_count = Enum.count(indexers, & &1.enabled)
+
+    # Also count Cardigann indexers if feature is enabled
+    cardigann_count =
+      if Application.get_env(:mydia, :features, [])[:cardigann_indexers] do
+        Mydia.Indexers.list_cardigann_definitions()
+        |> Enum.count(& &1.enabled)
+      else
+        0
+      end
+
+    enabled_count + cardigann_count
+  end
 
   defp load_monitored_movies_without_files do
     MediaItem
@@ -208,9 +327,11 @@ defmodule Mydia.Jobs.MovieSearch do
 
   defp build_ranking_options(movie, args) do
     # Start with base options
+    # Include search_query for title relevance scoring
     base_opts = [
       min_seeders: Map.get(args, "min_seeders", 5),
-      size_range: Map.get(args, "size_range", {500, 20_000})
+      size_range: Map.get(args, "size_range", {500, 20_000}),
+      search_query: build_search_query(movie)
     ]
 
     # Add quality profile preferences if available
