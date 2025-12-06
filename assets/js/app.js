@@ -147,6 +147,100 @@ const DownloadFile = {
   },
 };
 
+// Sprite preview hook - animates through sprite sheet frames on hover
+const SpritePreview = {
+  mounted() {
+    this.spriteUrl = this.el.dataset.spriteUrl;
+    this.spriteWidth = parseInt(this.el.dataset.spriteWidth) || 160;
+    this.spriteHeight = parseInt(this.el.dataset.spriteHeight) || 90;
+    this.spriteColumns = parseInt(this.el.dataset.spriteColumns) || 10;
+    this.currentFrame = 0;
+    this.animationId = null;
+    this.spriteImage = null;
+    this.isLoaded = false;
+    this.frameInterval = 350; // ms between frames
+
+    this.canvas = this.el.querySelector("[data-sprite-canvas]");
+    this.progressBar = this.el.querySelector("[data-sprite-progress]");
+
+    if (!this.canvas || !this.spriteUrl) return;
+
+    this.ctx = this.canvas.getContext("2d");
+
+    // Preload sprite image
+    this.loadSprite();
+
+    // Event listeners
+    this.el.addEventListener("mouseenter", () => this.startAnimation());
+    this.el.addEventListener("mouseleave", () => this.stopAnimation());
+  },
+
+  loadSprite() {
+    this.spriteImage = new Image();
+    this.spriteImage.crossOrigin = "anonymous";
+    this.spriteImage.onload = () => {
+      this.isLoaded = true;
+      // Calculate total frames based on sprite sheet dimensions
+      const cols = Math.floor(this.spriteImage.width / this.spriteWidth);
+      const rows = Math.floor(this.spriteImage.height / this.spriteHeight);
+      this.totalFrames = cols * rows;
+      this.spriteColumns = cols;
+    };
+    this.spriteImage.src = this.spriteUrl;
+  },
+
+  startAnimation() {
+    if (!this.isLoaded || this.animationId) return;
+
+    this.currentFrame = 0;
+    this.drawFrame();
+    this.animationId = setInterval(() => {
+      this.currentFrame = (this.currentFrame + 1) % this.totalFrames;
+      this.drawFrame();
+    }, this.frameInterval);
+  },
+
+  stopAnimation() {
+    if (this.animationId) {
+      clearInterval(this.animationId);
+      this.animationId = null;
+    }
+    this.currentFrame = 0;
+  },
+
+  drawFrame() {
+    if (!this.ctx || !this.spriteImage || !this.isLoaded) return;
+
+    // Set canvas size to match displayed size
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = rect.width;
+    this.canvas.height = rect.height;
+
+    // Calculate source position in sprite sheet
+    const col = this.currentFrame % this.spriteColumns;
+    const row = Math.floor(this.currentFrame / this.spriteColumns);
+    const sx = col * this.spriteWidth;
+    const sy = row * this.spriteHeight;
+
+    // Draw frame scaled to canvas size
+    this.ctx.drawImage(
+      this.spriteImage,
+      sx, sy, this.spriteWidth, this.spriteHeight,
+      0, 0, this.canvas.width, this.canvas.height
+    );
+
+    // Update progress bar
+    if (this.progressBar) {
+      const progress = ((this.currentFrame + 1) / this.totalFrames) * 100;
+      this.progressBar.style.width = `${progress}%`;
+    }
+  },
+
+  destroyed() {
+    this.stopAnimation();
+  }
+};
+
 // Sticky toolbar hook - shows fixed toolbar when original scrolls out of view
 const StickyToolbar = {
   mounted() {
@@ -226,6 +320,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PathAutocomplete,
     DownloadFile,
     StickyToolbar,
+    SpritePreview,
   },
 });
 

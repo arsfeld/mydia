@@ -9,8 +9,63 @@
         </p>
       </div>
 
-      <%!-- View controls --%>
+      <%!-- Actions and view controls --%>
       <div class="flex items-center gap-2">
+        <%!-- Generate thumbnails dropdown --%>
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-sm btn-secondary">
+            <%= if @generating_thumbnails do %>
+              <span class="loading loading-spinner loading-xs"></span>
+              <span class="hidden sm:inline ml-1">
+                <%= if @generation_progress do %>
+                  {Map.get(@generation_progress, :completed, 0)}/{Map.get(
+                    @generation_progress,
+                    :total,
+                    0
+                  )}
+                <% else %>
+                  Generating...
+                <% end %>
+              </span>
+            <% else %>
+              <.icon name="hero-photo" class="w-5 h-5" />
+              <span class="hidden sm:inline ml-1">Generate</span>
+            <% end %>
+          </div>
+          <ul
+            tabindex="0"
+            class="dropdown-content z-20 menu p-2 shadow-lg bg-base-100 rounded-box w-56"
+          >
+            <li>
+              <button
+                type="button"
+                phx-click="generate_all_thumbnails"
+                disabled={@generating_thumbnails}
+                class="gap-2"
+              >
+                <.icon name="hero-photo" class="w-5 h-5" /> Thumbnails Only
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                phx-click="generate_all_sprites"
+                disabled={@generating_thumbnails}
+                class="gap-2"
+              >
+                <.icon name="hero-squares-2x2" class="w-5 h-5" /> Thumbnails + Sprites
+              </button>
+            </li>
+            <%= if @generating_thumbnails do %>
+              <li class="border-t border-base-200 mt-1 pt-1">
+                <button type="button" phx-click="cancel_generation" class="gap-2 text-error">
+                  <.icon name="hero-x-mark" class="w-5 h-5" /> Cancel
+                </button>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+
         <%!-- View mode toggle --%>
         <div class="join">
           <button
@@ -105,31 +160,81 @@
       phx-viewport-bottom="load_more"
       class={[
         @view_mode == :grid &&
-          "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 pb-6 md:pb-8",
+          "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 pb-6 md:pb-8",
         @view_mode == :list && "card bg-base-100 shadow-lg overflow-hidden -mt-px"
       ]}
     >
       <div :for={{id, file} <- @streams.files} id={id} class={@view_mode == :list && "contents"}>
         <%= if @view_mode == :grid do %>
-          <%!-- Grid Card View --%>
-          <div class="relative group">
-            <div class="card bg-base-100 shadow-lg hover:shadow-xl transition-shadow duration-200">
+          <%!-- Grid Card View with Sprite Preview --%>
+          <.link
+            navigate={~p"/adult/#{file.id}"}
+            class="relative group block"
+            id={"card-#{file.id}"}
+            phx-hook={if file.sprite_blob, do: "SpritePreview"}
+            data-sprite-url={if file.sprite_blob, do: get_sprite_url(file)}
+            data-sprite-width="160"
+            data-sprite-height="90"
+            data-sprite-columns="10"
+          >
+            <div class="card bg-base-100 shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden">
               <figure class="relative aspect-video overflow-hidden bg-base-300">
+                <%!-- Static thumbnail (hidden on hover when sprite available) --%>
                 <img
                   src={get_thumbnail_url(file)}
                   alt={get_display_name(file)}
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  class={[
+                    "w-full h-full object-cover transition-all duration-300",
+                    file.sprite_blob && "group-hover:opacity-0"
+                  ]}
                   loading="lazy"
                 />
-                <%!-- Resolution badge --%>
-                <%= if resolution = format_resolution(file.resolution) do %>
-                  <div class="badge badge-primary badge-sm absolute top-2 right-2 z-10 shadow-md">
-                    {resolution}
+                <%!-- Sprite preview canvas (shown on hover) --%>
+                <%= if file.sprite_blob do %>
+                  <div
+                    class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                    data-sprite-container
+                  >
+                    <canvas class="w-full h-full object-cover" data-sprite-canvas></canvas>
+                    <%!-- Progress bar --%>
+                    <div class="absolute bottom-0 left-0 right-0 h-1 bg-base-300/50">
+                      <div
+                        class="h-full bg-primary transition-all duration-100"
+                        data-sprite-progress
+                        style="width: 0%"
+                      >
+                      </div>
+                    </div>
                   </div>
                 <% end %>
-                <%!-- Size badge --%>
-                <div class="badge badge-neutral badge-sm absolute bottom-2 right-2 z-10 shadow-md">
-                  {format_file_size(file.size)}
+                <%!-- Overlay gradient --%>
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                </div>
+                <%!-- Top badges --%>
+                <div class="absolute top-2 left-2 right-2 flex justify-between items-start z-10">
+                  <%= if duration = get_duration(file) do %>
+                    <span class="badge badge-neutral badge-sm shadow-lg font-mono">
+                      {format_duration(duration)}
+                    </span>
+                  <% else %>
+                    <span></span>
+                  <% end %>
+                  <%= if resolution = format_resolution(file.resolution) do %>
+                    <span class="badge badge-primary badge-sm shadow-lg">
+                      {resolution}
+                    </span>
+                  <% end %>
+                </div>
+                <%!-- Bottom info (visible on hover) --%>
+                <div class="absolute bottom-2 left-2 right-2 flex justify-between items-end z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span class="text-white text-xs font-medium drop-shadow-lg">
+                    {format_file_size(file.size)}
+                  </span>
+                  <%= if file.sprite_blob do %>
+                    <span class="text-white/70 text-xs drop-shadow-lg">
+                      <.icon name="hero-play-circle" class="w-4 h-4 inline" /> Preview
+                    </span>
+                  <% end %>
                 </div>
               </figure>
               <div class="card-body p-3">
@@ -138,10 +243,13 @@
                 </h3>
               </div>
             </div>
-          </div>
+          </.link>
         <% else %>
           <%!-- List Row View --%>
-          <div class="flex items-center px-4 py-3 hover:bg-base-200/50 border-b border-base-200 last:border-b-0 odd:bg-base-100 even:bg-base-200/30 transition-colors">
+          <.link
+            navigate={~p"/adult/#{file.id}"}
+            class="flex items-center px-4 py-3 hover:bg-base-200/50 border-b border-base-200 last:border-b-0 odd:bg-base-100 even:bg-base-200/30 transition-colors cursor-pointer"
+          >
             <%!-- Thumbnail column --%>
             <div class="w-14 flex-shrink-0">
               <img
@@ -173,7 +281,7 @@
             <div class="w-28 hidden xl:block text-center text-base-content/70 text-sm flex-shrink-0">
               {format_date(file.inserted_at)}
             </div>
-          </div>
+          </.link>
         <% end %>
       </div>
     </div>

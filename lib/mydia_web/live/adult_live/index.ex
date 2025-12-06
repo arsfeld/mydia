@@ -8,6 +8,7 @@ defmodule MydiaWeb.AdultLive.Index do
 
   use MydiaWeb, :live_view
 
+  alias Mydia.Jobs.ThumbnailGeneration
   alias Mydia.Library
   alias Mydia.Library.GeneratedMedia
 
@@ -16,6 +17,10 @@ defmodule MydiaWeb.AdultLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      ThumbnailGeneration.subscribe()
+    end
+
     {:ok,
      socket
      |> assign(:view_mode, :grid)
@@ -24,6 +29,8 @@ defmodule MydiaWeb.AdultLive.Index do
      |> assign(:page, 0)
      |> assign(:has_more, true)
      |> assign(:page_title, "Adult")
+     |> assign(:generating_thumbnails, false)
+     |> assign(:generation_progress, nil)
      |> stream(:files, [])}
   end
 
@@ -72,6 +79,70 @@ defmodule MydiaWeb.AdultLive.Index do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_event("generate_all_thumbnails", _params, socket) do
+    case ThumbnailGeneration.enqueue_missing(library_type: :adult) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> assign(:generating_thumbnails, true)
+         |> put_flash(:info, "Thumbnail generation started")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to start generation: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("generate_all_sprites", _params, socket) do
+    case ThumbnailGeneration.enqueue_missing(library_type: :adult, include_sprites: true) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> assign(:generating_thumbnails, true)
+         |> put_flash(:info, "Thumbnail and sprite generation started")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to start generation: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("cancel_generation", _params, socket) do
+    ThumbnailGeneration.cancel_all()
+
+    {:noreply,
+     socket
+     |> assign(:generating_thumbnails, false)
+     |> assign(:generation_progress, nil)
+     |> put_flash(:info, "Generation cancelled")}
+  end
+
+  @impl true
+  def handle_info({:thumbnail_generation, %{event: :started} = progress}, socket) do
+    {:noreply,
+     socket
+     |> assign(:generating_thumbnails, true)
+     |> assign(:generation_progress, progress)}
+  end
+
+  def handle_info({:thumbnail_generation, %{event: :progress} = progress}, socket) do
+    {:noreply, assign(socket, :generation_progress, progress)}
+  end
+
+  def handle_info({:thumbnail_generation, %{event: :completed} = progress}, socket) do
+    {:noreply,
+     socket
+     |> assign(:generating_thumbnails, false)
+     |> assign(:generation_progress, progress)
+     |> load_files(reset: true)
+     |> put_flash(:info, "Generation complete: #{progress.completed}/#{progress.total} succeeded")}
+  end
+
+  def handle_info({:thumbnail_generation, %{event: :cancelled}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:generating_thumbnails, false)
+     |> assign(:generation_progress, nil)}
   end
 
   defp load_files(socket, opts) do
@@ -163,6 +234,21 @@ defmodule MydiaWeb.AdultLive.Index do
       GeneratedMedia.url_path(:cover, file.cover_blob)
     else
       "/images/no-poster.svg"
+    end
+  end
+
+  defp get_sprite_url(file) do
+    if file.sprite_blob do
+      GeneratedMedia.url_path(:sprite, file.sprite_blob)
+    else
+      nil
+    end
+  end
+
+  defp get_duration(file) do
+    case file.metadata do
+      %{"duration" => duration} when is_number(duration) -> trunc(duration)
+      _ -> nil
     end
   end
 
