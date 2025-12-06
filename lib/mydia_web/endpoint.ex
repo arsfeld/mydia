@@ -36,6 +36,18 @@ defmodule MydiaWeb.Endpoint do
     gzip: not code_reloading?,
     only: MydiaWeb.static_paths()
 
+  # Serve generated media content (thumbnails, sprites, previews)
+  # Files are stored in a configurable directory with content-addressable naming
+  # Use Application.compile_env for compile-time configuration or fallback to default
+  plug Plug.Static,
+    at: "/generated",
+    from:
+      Application.compile_env(:mydia, :generated_media_path) ||
+        Path.join(Application.app_dir(:mydia, "priv"), "generated"),
+    gzip: false,
+    cache_control_for_etags: "public, max-age=31536000",
+    headers: %{"access-control-allow-origin" => "*"}
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do

@@ -10,5 +10,9 @@ config :mydia, MydiaWeb.Endpoint, cache_static_manifest: "priv/static/cache_mani
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Generated media storage path for Docker deployments
+# This path is used by Plug.Static in the endpoint
+config :mydia, :generated_media_path, "/data/generated"
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

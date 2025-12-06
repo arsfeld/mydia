@@ -221,10 +221,7 @@ defmodule Mydia.Library.GeneratedMedia do
   end
 
   defp default_base_path do
-    if Application.get_env(:mydia, :env) == :prod do
-      "/data/generated"
-    else
-      Path.join([Application.app_dir(:mydia), "priv", "generated"])
-    end
+    # In development, use priv/generated within the app directory
+    Path.join([Application.app_dir(:mydia), "priv", "generated"])
   end
 end
