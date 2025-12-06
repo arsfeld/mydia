@@ -19,6 +19,14 @@ defmodule Mydia.Library.MediaFile do
     field :verified_at, :utc_datetime
     field :metadata, Mydia.Settings.JsonMapType
 
+    # Generated media content references (MD5 checksums as storage keys)
+    field :cover_blob, :string
+    field :sprite_blob, :string
+    field :vtt_blob, :string
+    field :preview_blob, :string
+    field :phash, :string
+    field :generated_at, :utc_datetime
+
     # Relative path storage (Phase 1)
     field :relative_path, :string
     belongs_to :library_path, Mydia.Settings.LibraryPath
@@ -71,7 +79,13 @@ defmodule Mydia.Library.MediaFile do
       :audio_codec,
       :bitrate,
       :verified_at,
-      :metadata
+      :metadata,
+      :cover_blob,
+      :sprite_blob,
+      :vtt_blob,
+      :preview_blob,
+      :phash,
+      :generated_at
     ])
     |> validate_required([:relative_path, :library_path_id])
     |> validate_one_parent()
@@ -108,7 +122,13 @@ defmodule Mydia.Library.MediaFile do
       :audio_codec,
       :bitrate,
       :verified_at,
-      :metadata
+      :metadata,
+      :cover_blob,
+      :sprite_blob,
+      :vtt_blob,
+      :preview_blob,
+      :phash,
+      :generated_at
     ])
     |> validate_required([:relative_path, :library_path_id])
     |> validate_parent_exclusivity()
