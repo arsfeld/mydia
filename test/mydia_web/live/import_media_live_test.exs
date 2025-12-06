@@ -4,7 +4,137 @@ defmodule MydiaWeb.ImportMediaLiveTest do
   import Phoenix.LiveViewTest
   import Mydia.AccountsFixtures
 
-  alias Mydia.Settings
+  alias Mydia.{Library, Settings}
+
+  describe "session recovery" do
+    setup do
+      user = user_fixture()
+      %{user: user}
+    end
+
+    test "shows resume prompt when user has active import session", %{conn: conn, user: user} do
+      # Create an active import session for the user
+      {:ok, session} =
+        Library.create_import_session(%{
+          id: Ecto.UUID.generate(),
+          user_id: user.id,
+          step: :review,
+          scan_path: "/test/media/library",
+          scan_stats: %{"total" => 100, "matched" => 80},
+          status: :active
+        })
+
+      conn = log_in_user(conn, user)
+
+      # Navigate to import page without session_id - should show resume prompt
+      {:ok, _view, html} = live(conn, ~p"/import")
+
+      # Should show the resume prompt
+      assert html =~ "Resume Previous Import?"
+      assert html =~ "Resume Session"
+      assert html =~ "Start Fresh"
+
+      # Clean up
+      Mydia.Repo.delete(session)
+    end
+
+    test "start fresh button abandons session and starts new one", %{conn: conn, user: user} do
+      # Create an active import session
+      {:ok, session} =
+        Library.create_import_session(%{
+          id: Ecto.UUID.generate(),
+          user_id: user.id,
+          step: :review,
+          scan_path: "/test/media/library",
+          status: :active
+        })
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/import")
+
+      # Click start fresh - push_patch will update the view in place
+      html =
+        view
+        |> element("button", "Start Fresh")
+        |> render_click()
+
+      # Should now be on path selection step (not showing resume prompt)
+      refute html =~ "Resume Session"
+      assert html =~ "Select a Library to Scan"
+
+      # Original session should be abandoned
+      updated_session = Library.get_import_session(session.id)
+      assert updated_session.status == :abandoned
+    end
+
+    test "resume button redirects to existing session", %{conn: conn, user: user} do
+      # Create an active import session
+      session_id = Ecto.UUID.generate()
+
+      {:ok, session} =
+        Library.create_import_session(%{
+          id: session_id,
+          user_id: user.id,
+          step: :review,
+          scan_path: "/test/media/library",
+          status: :active
+        })
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/import")
+
+      # Click resume - push_patch will update the view in place
+      html =
+        view
+        |> element("button", "Resume Session")
+        |> render_click()
+
+      # Should no longer show resume prompt (session was restored)
+      refute html =~ "Resume Previous Import?"
+
+      # The session should still be active
+      updated_session = Library.get_import_session(session.id)
+      assert updated_session.status == :active
+
+      # Clean up
+      Mydia.Repo.delete(session)
+    end
+
+    test "no resume prompt when user has no active session", %{conn: conn, user: user} do
+      conn = log_in_user(conn, user)
+
+      # Navigate to import page - should redirect to new session
+      {:ok, _view, html} = live(conn, ~p"/import") |> follow_redirect(conn)
+
+      # Should NOT show resume prompt - should show path selection
+      refute html =~ "Resume Previous Import?"
+      assert html =~ "Select a Library to Scan"
+    end
+
+    test "completed sessions do not trigger resume prompt", %{conn: conn, user: user} do
+      # Create a completed session (not active)
+      {:ok, session} =
+        Library.create_import_session(%{
+          id: Ecto.UUID.generate(),
+          user_id: user.id,
+          step: :complete,
+          scan_path: "/test/media/library",
+          status: :completed
+        })
+
+      conn = log_in_user(conn, user)
+
+      # Navigate to import page - should redirect to new session, not show resume
+      {:ok, _view, html} = live(conn, ~p"/import") |> follow_redirect(conn)
+
+      # Should NOT show resume prompt
+      refute html =~ "Resume Previous Import?"
+      assert html =~ "Select a Library to Scan"
+
+      # Clean up
+      Mydia.Repo.delete(session)
+    end
+  end
 
   describe "library type filtering" do
     setup do

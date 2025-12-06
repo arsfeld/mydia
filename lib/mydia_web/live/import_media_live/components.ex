@@ -1622,6 +1622,133 @@ defmodule MydiaWeb.ImportMediaLive.Components do
     """
   end
 
+  @doc """
+  Renders a prompt to resume an existing import session or start fresh.
+
+  ## Attributes
+    * `:pending_session` - The active import session that can be resumed
+  """
+  attr :pending_session, :any, required: true
+
+  def resume_session_prompt(assigns) do
+    # Calculate how long ago the session was active
+    time_ago = format_time_ago(assigns.pending_session.updated_at)
+
+    # Get step label for display
+    step_label =
+      case assigns.pending_session.step do
+        :select_path -> "Path Selection"
+        :review -> "Review Matches"
+        :importing -> "Import in Progress"
+        :complete -> "Completed"
+        step -> to_string(step)
+      end
+
+    assigns =
+      assigns
+      |> assign(:time_ago, time_ago)
+      |> assign(:step_label, step_label)
+
+    ~H"""
+    <div class="flex flex-col items-center py-12">
+      <%!-- Icon --%>
+      <div class="relative mb-6">
+        <div class="flex items-center justify-center w-20 h-20 rounded-full bg-info/10">
+          <.icon name="hero-arrow-path" class="w-10 h-10 text-info" />
+        </div>
+      </div>
+
+      <%!-- Title --%>
+      <h2 class="text-xl font-bold mb-2">Resume Previous Import?</h2>
+      <p class="text-sm text-base-content/60 max-w-md text-center mb-6">
+        You have an active import session that was last updated {@time_ago}.
+      </p>
+
+      <%!-- Session Details Card --%>
+      <div class="card bg-base-200 border border-base-300 w-full max-w-md mb-6">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-info/20">
+                <.icon name="hero-folder-open" class="w-5 h-5 text-info" />
+              </div>
+              <div>
+                <p class="font-semibold text-sm">Import Session</p>
+                <p class="text-xs text-base-content/60">
+                  Step: {@step_label}
+                </p>
+              </div>
+            </div>
+            <div class="badge badge-info badge-sm">Active</div>
+          </div>
+
+          <%= if @pending_session.scan_path do %>
+            <div class="divider my-2"></div>
+            <div class="flex items-center gap-2">
+              <.icon name="hero-folder" class="w-4 h-4 text-base-content/50" />
+              <p class="text-xs font-mono text-base-content/70 truncate">
+                {@pending_session.scan_path}
+              </p>
+            </div>
+          <% end %>
+
+          <%= if @pending_session.scan_stats && @pending_session.scan_stats["total"] do %>
+            <div class="flex gap-4 mt-2">
+              <div class="text-xs">
+                <span class="text-base-content/60">Files:</span>
+                <span class="font-semibold">{@pending_session.scan_stats["total"]}</span>
+              </div>
+              <%= if @pending_session.scan_stats["matched"] do %>
+                <div class="text-xs">
+                  <span class="text-base-content/60">Matched:</span>
+                  <span class="font-semibold text-success">
+                    {@pending_session.scan_stats["matched"]}
+                  </span>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <%!-- Action Buttons --%>
+      <div class="flex gap-3">
+        <button type="button" phx-click="start_fresh" class="btn btn-ghost">
+          <.icon name="hero-plus" class="w-4 h-4" /> Start Fresh
+        </button>
+        <button type="button" phx-click="resume_session" class="btn btn-primary">
+          <.icon name="hero-arrow-path" class="w-4 h-4" /> Resume Session
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  # Formats a DateTime as a human-readable relative time string
+  defp format_time_ago(nil), do: "some time ago"
+
+  defp format_time_ago(datetime) do
+    now = DateTime.utc_now()
+
+    # Handle both DateTime and NaiveDateTime
+    datetime_utc =
+      case datetime do
+        %DateTime{} -> datetime
+        %NaiveDateTime{} -> DateTime.from_naive!(datetime, "Etc/UTC")
+        _ -> now
+      end
+
+    diff_seconds = DateTime.diff(now, datetime_utc, :second)
+
+    cond do
+      diff_seconds < 60 -> "just now"
+      diff_seconds < 3600 -> "#{div(diff_seconds, 60)} minutes ago"
+      diff_seconds < 86400 -> "#{div(diff_seconds, 3600)} hours ago"
+      diff_seconds < 604_800 -> "#{div(diff_seconds, 86400)} days ago"
+      true -> "over a week ago"
+    end
+  end
+
   ## Helper Functions
 
   defp format_file_size(size) when size < 1024, do: "#{size} B"

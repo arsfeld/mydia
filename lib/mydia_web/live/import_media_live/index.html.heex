@@ -13,13 +13,20 @@
       </button>
     </div>
 
-    <%!-- Progress Steps --%>
-    <div class="mb-4">
-      <Components.progress_steps step={@step} />
-    </div>
+    <%!-- Progress Steps (hide when showing resume prompt) --%>
+    <%= unless @show_resume_prompt do %>
+      <div class="mb-4">
+        <Components.progress_steps step={@step} />
+      </div>
+    <% end %>
+
+    <%!-- Resume Session Prompt (shown when active session exists) --%>
+    <%= if @show_resume_prompt && @pending_session do %>
+      <Components.resume_session_prompt pending_session={@pending_session} />
+    <% end %>
 
     <%!-- Step 1: Select Path --%>
-    <%= if @step == :select_path do %>
+    <%= if @step == :select_path and not @show_resume_prompt do %>
       <Components.path_selection_screen library_paths={@library_paths} />
     <% end %>
 

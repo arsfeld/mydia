@@ -56,6 +56,9 @@ defmodule MydiaWeb.ImportMediaLive.Index do
     |> assign(:show_path_suggestions, false)
     |> assign(:show_type_filtered, false)
     |> assign(:show_sample_filtered, false)
+    # Session recovery prompts
+    |> assign(:show_resume_prompt, false)
+    |> assign(:pending_session, nil)
   end
 
   @impl true
@@ -63,9 +66,8 @@ defmodule MydiaWeb.ImportMediaLive.Index do
     # Check if there's a session_id in the URL
     case Map.get(params, "session_id") do
       nil ->
-        # No session_id - generate a new one and redirect
-        session_id = Ecto.UUID.generate()
-        {:noreply, push_patch(socket, to: ~p"/import?session_id=#{session_id}")}
+        # No session_id - check for an active session before creating a new one
+        handle_no_session_id(socket)
 
       session_id ->
         # Try to load the session
@@ -78,6 +80,26 @@ defmodule MydiaWeb.ImportMediaLive.Index do
             # Session exists - restore it
             {:noreply, assign(restore_session(socket, session), :session_id, session_id)}
         end
+    end
+  end
+
+  # Handles the case when user navigates to /import without a session_id
+  # Checks for active sessions and prompts user to resume if one exists
+  defp handle_no_session_id(socket) do
+    user_id = socket.assigns.current_user.id
+
+    case Library.get_active_import_session(user_id) do
+      nil ->
+        # No active session - generate a new session_id and redirect
+        session_id = Ecto.UUID.generate()
+        {:noreply, push_patch(socket, to: ~p"/import?session_id=#{session_id}")}
+
+      active_session ->
+        # Active session found - show resume prompt
+        {:noreply,
+         socket
+         |> assign(:pending_session, active_session)
+         |> assign(:show_resume_prompt, true)}
     end
   end
 
@@ -246,6 +268,42 @@ defmodule MydiaWeb.ImportMediaLive.Index do
 
   def handle_event("cancel", _params, socket) do
     {:noreply, push_navigate(socket, to: ~p"/media")}
+  end
+
+  def handle_event("resume_session", _params, socket) do
+    # Resume the pending session by redirecting to its session_id
+    case socket.assigns.pending_session do
+      nil ->
+        # No pending session - start fresh
+        session_id = Ecto.UUID.generate()
+
+        {:noreply,
+         socket
+         |> assign(:show_resume_prompt, false)
+         |> assign(:pending_session, nil)
+         |> push_patch(to: ~p"/import?session_id=#{session_id}")}
+
+      session ->
+        {:noreply,
+         socket
+         |> assign(:show_resume_prompt, false)
+         |> assign(:pending_session, nil)
+         |> push_patch(to: ~p"/import?session_id=#{session.id}")}
+    end
+  end
+
+  def handle_event("start_fresh", _params, socket) do
+    # Abandon any active sessions and start a new one
+    user_id = socket.assigns.current_user.id
+    Library.abandon_active_import_sessions(user_id)
+
+    session_id = Ecto.UUID.generate()
+
+    {:noreply,
+     socket
+     |> assign(:show_resume_prompt, false)
+     |> assign(:pending_session, nil)
+     |> push_patch(to: ~p"/import?session_id=#{session_id}")}
   end
 
   def handle_event("toggle_type_filtered", _params, socket) do
