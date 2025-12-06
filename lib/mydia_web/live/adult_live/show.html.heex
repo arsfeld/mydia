@@ -1,0 +1,266 @@
+<Layouts.app {assigns}>
+  <div class="flex flex-col gap-6">
+    <%!-- Header with back button and title --%>
+    <div class="flex items-center gap-4">
+      <.link navigate={~p"/adult"} class="btn btn-ghost btn-circle">
+        <.icon name="hero-arrow-left" class="w-6 h-6" />
+      </.link>
+      <div class="flex-1 min-w-0">
+        <h1 class="text-2xl font-bold truncate" title={get_display_name(@file)}>
+          {get_display_name(@file)}
+        </h1>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <%!-- Main content area (video player / preview) --%>
+      <div class="lg:col-span-2 space-y-4">
+        <%!-- Video Player --%>
+        <div class="card bg-base-100 shadow-lg overflow-hidden">
+          <.video_player
+            content_type="file"
+            content_id={@file.id}
+            class="aspect-video"
+          />
+        </div>
+
+        <%!-- Sprite Timeline Preview --%>
+        <%= if sprite_url = get_sprite_url(@file) do %>
+          <div class="card bg-base-100 shadow-lg">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm">Timeline Preview</h3>
+              <div class="overflow-x-auto">
+                <img
+                  src={sprite_url}
+                  alt="Sprite timeline"
+                  class="h-24 object-contain"
+                  loading="lazy"
+                />
+              </div>
+              <%= if vtt_url = get_vtt_url(@file) do %>
+                <p class="text-sm text-base-content/60">
+                  VTT file available:
+                  <a href={vtt_url} class="link link-primary" download>Download</a>
+                </p>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <%!-- Preview Video --%>
+        <%= if preview_url = get_preview_url(@file) do %>
+          <div class="card bg-base-100 shadow-lg">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm">Preview Video</h3>
+              <video
+                src={preview_url}
+                controls
+                class="w-full rounded-lg"
+                preload="metadata"
+              >
+                Your browser does not support the video tag.
+              </video>
+              <p class="text-sm text-base-content/60">
+                <a href={preview_url} class="link link-primary" download>Download Preview</a>
+              </p>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <%!-- Sidebar with metadata and actions --%>
+      <div class="space-y-4">
+        <%!-- Actions Card --%>
+        <div class="card bg-base-100 shadow-lg">
+          <div class="card-body">
+            <h3 class="card-title">Actions</h3>
+            <div class="flex flex-col gap-2">
+              <%= if video_url = get_video_url(@file) do %>
+                <a
+                  href={video_url}
+                  class="btn btn-primary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <.icon name="hero-play" class="w-5 h-5" /> Open in New Tab
+                </a>
+              <% end %>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                phx-click="generate_thumbnail"
+                disabled={@generating_thumbnail}
+              >
+                <%= if @generating_thumbnail do %>
+                  <span class="loading loading-spinner loading-sm"></span> Generating...
+                <% else %>
+                  <.icon name="hero-photo" class="w-5 h-5" /> Generate Thumbnail
+                <% end %>
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                phx-click="generate_sprites"
+                disabled={@generating_sprites}
+              >
+                <%= if @generating_sprites do %>
+                  <span class="loading loading-spinner loading-sm"></span> Generating...
+                <% else %>
+                  <.icon name="hero-squares-2x2" class="w-5 h-5" /> Generate Sprites
+                <% end %>
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                phx-click="generate_preview"
+                disabled={@generating_preview}
+              >
+                <%= if @generating_preview do %>
+                  <span class="loading loading-spinner loading-sm"></span> Generating...
+                <% else %>
+                  <.icon name="hero-film" class="w-5 h-5" /> Generate Preview
+                <% end %>
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-error btn-outline"
+                phx-click="delete_file"
+                data-confirm="Are you sure you want to delete this file? This cannot be undone."
+              >
+                <.icon name="hero-trash" class="w-5 h-5" /> Delete File
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <%!-- File Metadata Card --%>
+        <div class="card bg-base-100 shadow-lg">
+          <div class="card-body">
+            <h3 class="card-title">File Information</h3>
+            <dl class="space-y-3 text-sm">
+              <div class="flex justify-between">
+                <dt class="text-base-content/60">Size</dt>
+                <dd class="font-medium">{format_file_size(@file.size)}</dd>
+              </div>
+
+              <%= if @file.resolution do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">Resolution</dt>
+                  <dd>
+                    <span class="badge badge-primary">{@file.resolution}</span>
+                  </dd>
+                </div>
+              <% end %>
+
+              <%= if @file.codec do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">Video Codec</dt>
+                  <dd class="font-medium">{@file.codec}</dd>
+                </div>
+              <% end %>
+
+              <%= if @file.audio_codec do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">Audio Codec</dt>
+                  <dd class="font-medium">{@file.audio_codec}</dd>
+                </div>
+              <% end %>
+
+              <%= if @file.hdr_format do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">HDR Format</dt>
+                  <dd>
+                    <span class="badge badge-accent">{@file.hdr_format}</span>
+                  </dd>
+                </div>
+              <% end %>
+
+              <%= if @file.bitrate do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">Bitrate</dt>
+                  <dd class="font-medium">{Float.round(@file.bitrate / 1000, 1)} kbps</dd>
+                </div>
+              <% end %>
+
+              <div class="divider my-2"></div>
+
+              <div class="flex justify-between">
+                <dt class="text-base-content/60">Added</dt>
+                <dd class="font-medium">{format_date(@file.inserted_at)}</dd>
+              </div>
+
+              <%= if @file.generated_at do %>
+                <div class="flex justify-between">
+                  <dt class="text-base-content/60">Media Generated</dt>
+                  <dd class="font-medium">{format_date(@file.generated_at)}</dd>
+                </div>
+              <% end %>
+
+              <%= if @file.library_path do %>
+                <div class="flex justify-between items-start gap-2">
+                  <dt class="text-base-content/60 flex-shrink-0">Library</dt>
+                  <dd class="font-medium text-right truncate" title={@file.library_path.path}>
+                    {Path.basename(@file.library_path.path)}
+                  </dd>
+                </div>
+              <% end %>
+            </dl>
+          </div>
+        </div>
+
+        <%!-- Generated Media Status Card --%>
+        <div class="card bg-base-100 shadow-lg">
+          <div class="card-body">
+            <h3 class="card-title">Generated Media</h3>
+            <ul class="space-y-2 text-sm">
+              <li class="flex items-center justify-between">
+                <span class="text-base-content/60">Thumbnail</span>
+                <%= if @file.cover_blob do %>
+                  <span class="badge badge-success badge-sm">Generated</span>
+                <% else %>
+                  <span class="badge badge-ghost badge-sm">Not generated</span>
+                <% end %>
+              </li>
+              <li class="flex items-center justify-between">
+                <span class="text-base-content/60">Sprite Sheet</span>
+                <%= if @file.sprite_blob do %>
+                  <span class="badge badge-success badge-sm">Generated</span>
+                <% else %>
+                  <span class="badge badge-ghost badge-sm">Not generated</span>
+                <% end %>
+              </li>
+              <li class="flex items-center justify-between">
+                <span class="text-base-content/60">Timeline VTT</span>
+                <%= if @file.vtt_blob do %>
+                  <span class="badge badge-success badge-sm">Generated</span>
+                <% else %>
+                  <span class="badge badge-ghost badge-sm">Not generated</span>
+                <% end %>
+              </li>
+              <li class="flex items-center justify-between">
+                <span class="text-base-content/60">Preview Video</span>
+                <%= if @file.preview_blob do %>
+                  <span class="badge badge-success badge-sm">Generated</span>
+                <% else %>
+                  <span class="badge badge-ghost badge-sm">Not generated</span>
+                <% end %>
+              </li>
+              <li class="flex items-center justify-between">
+                <span class="text-base-content/60">Perceptual Hash</span>
+                <%= if @file.phash do %>
+                  <span class="badge badge-success badge-sm">Generated</span>
+                <% else %>
+                  <span class="badge badge-ghost badge-sm">Not generated</span>
+                <% end %>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layouts.app>
