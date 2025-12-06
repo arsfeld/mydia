@@ -94,7 +94,7 @@ defmodule MydiaWeb.Router do
       live "/books", BooksLive.Index, :index
       live "/books/:id", BooksLive.Show, :show
       live "/books/authors/:id", BooksLive.AuthorShow, :show
-      live "/adult", MediaLive.Index, :adult
+      live "/adult", AdultLive.Index, :index
       live "/add/movie", AddMediaLive.Index, :add_movie
       live "/add/series", AddMediaLive.Index, :add_series
       live "/import", ImportMediaLive.Index, :index
